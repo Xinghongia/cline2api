@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
+  Dropdown,
   Form,
   Input,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Table,
   Tabs,
@@ -18,8 +20,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CloudUploadOutlined,
   ExportOutlined,
+  MoreOutlined,
   PlusOutlined,
   ReloadOutlined,
+  SearchOutlined,
   ThunderboltOutlined,
   UserAddOutlined,
 } from '@ant-design/icons'
@@ -37,16 +41,15 @@ import type {
 import PageHeader from '../components/PageHeader'
 import { copyText, fmtNum, fmtTime, openExternal, parseTokenLines } from '../utils'
 
-const STATUS_COLOR: Record<string, string> = {
-  active: 'green',
-  cooldown: 'orange',
-  expired: 'red',
-}
-
+/** 状态 pill：低饱和彩点 + 等宽状态文本，比彩色 Tag 安静 */
 function statusTag(status: string, cooldownUntil: string | undefined) {
+  const color = status === 'active' ? 'var(--success)' : status === 'cooldown' ? 'var(--warning)' : 'var(--danger)'
   return (
     <Tooltip title={status === 'cooldown' && cooldownUntil ? `冷却至 ${fmtTime(cooldownUntil)}` : undefined}>
-      <Tag color={STATUS_COLOR[status] ?? 'default'}>{status}</Tag>
+      <span className="c2a-chip" style={{ gap: 6 }}>
+        <span className="c2a-dot" style={{ background: color }} />
+        <span className="c2a-mono">{status}</span>
+      </span>
     </Tooltip>
   )
 }
@@ -325,6 +328,8 @@ export default function Accounts() {
   const [importOpen, setImportOpen] = useState(false)
   const [oauthOpen, setOauthOpen] = useState(false)
   const [testResults, setTestResults] = useState<AccountTestResult[] | null>(null)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
 
   const accounts = useQuery({
     queryKey: ['accounts'],
@@ -378,6 +383,26 @@ export default function Accounts() {
     onError,
   })
 
+  const all = accounts.data?.accounts ?? []
+  const counts = useMemo(() => {
+    const c = { total: all.length, active: 0, cooldown: 0, expired: 0 }
+    for (const a of all) {
+      if (a.status === 'active') c.active++
+      else if (a.status === 'cooldown') c.cooldown++
+      else c.expired++
+    }
+    return c
+  }, [all])
+
+  const filtered = useMemo(() => {
+    const kw = search.trim().toLowerCase()
+    return all.filter((a) => {
+      if (statusFilter !== 'all' && a.status !== statusFilter) return false
+      if (!kw) return true
+      return (a.email ?? '').toLowerCase().includes(kw) || a.accountId.toLowerCase().includes(kw)
+    })
+  }, [all, search, statusFilter])
+
   const columns = [
     {
       title: t('accounts.email', '邮箱'),
@@ -385,7 +410,7 @@ export default function Accounts() {
       key: 'email',
       render: (v: string, row: Account) => (
         <Space size={4}>
-          <span>{v || row.accountId}</span>
+          <span>{v || <span className="c2a-mono" style={{ color: 'var(--ink-2)' }}>{row.accountId.slice(0, 18)}…</span>}</span>
           <Button
             type="text"
             size="small"
@@ -405,14 +430,16 @@ export default function Accounts() {
       title: t('accounts.usage', '调用次数'),
       dataIndex: 'usageCount',
       key: 'usageCount',
-      render: (v: number) => fmtNum(v),
+      align: 'right' as const,
+      render: (v: number) => <span className="c2a-mono">{fmtNum(v)}</span>,
       sorter: (a: Account, b: Account) => a.usageCount - b.usageCount,
     },
     {
       title: t('accounts.tokens', 'Tokens (入/出/缓存)'),
       key: 'tokens',
+      align: 'right' as const,
       render: (_: unknown, row: Account) => (
-        <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+        <span className="c2a-mono">
           {fmtNum(row.promptTokens)} / {fmtNum(row.completionTokens)} / {fmtNum(row.cachedTokens)}
         </span>
       ),
@@ -422,12 +449,13 @@ export default function Accounts() {
       title: t('accounts.lastUsed', '最近使用'),
       dataIndex: 'lastUsed',
       key: 'lastUsed',
-      render: fmtTime,
+      render: (v: string) => <span className="c2a-mono" style={{ fontSize: 12 }}>{fmtTime(v)}</span>,
+      sorter: (a: Account, b: Account) => (a.lastUsed ?? '').localeCompare(b.lastUsed ?? ''),
     },
     {
       title: t('accounts.actions', '操作'),
       key: 'actions',
-      width: 220,
+      width: 190,
       render: (_: unknown, row: Account) => (
         <Space size={0}>
           <Button type="link" size="small" loading={testOne.isPending} onClick={() => testOne.mutate(row.accountId)}>
@@ -449,6 +477,26 @@ export default function Accounts() {
     },
   ]
 
+  const moreItems = [
+    { key: 'export', icon: <ExportOutlined />, label: t('accounts.export', '导出') },
+    { key: 'refresh', icon: <ReloadOutlined />, label: t('accounts.refreshAll', '刷新全部 Token') },
+    { key: 'testAll', icon: <ThunderboltOutlined />, label: t('accounts.testAll', '测试全部') },
+    { type: 'divider' as const },
+    { key: 'deleteAll', danger: true, label: t('accounts.deleteAll', '清空账号池') },
+  ]
+
+  const onMoreClick = ({ key }: { key: string }) => {
+    if (key === 'export') window.open('/admin/api/accounts/export', '_blank')
+    if (key === 'refresh') refreshAll.mutate()
+    if (key === 'testAll') testAll.mutate()
+    if (key === 'deleteAll') {
+      Modal.confirm({
+        title: t('accounts.deleteAllConfirm', '将删除全部账号（含 API Key），确认？'),
+        onOk: () => deleteAll.mutate(),
+      })
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -456,49 +504,59 @@ export default function Accounts() {
         subtitle={t('accounts.subtitle', 'Cline 账号池，请求按策略在活跃账号间轮询')}
         extra={
           <>
+            <Button type="primary" icon={<CloudUploadOutlined />} onClick={() => setOauthOpen(true)}>
+              {t('accounts.oauthLogin', 'OAuth 登录')}
+            </Button>
             <Button icon={<UserAddOutlined />} onClick={() => setAddOpen(true)}>
               {t('accounts.addToken', '手动添加')}
-            </Button>
-            <Button icon={<CloudUploadOutlined />} onClick={() => setOauthOpen(true)}>
-              {t('accounts.oauthLogin', 'OAuth 登录')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setImportOpen(true)}>
               {t('accounts.batchImport', '批量导入')}
             </Button>
-            <Button
-              icon={<ExportOutlined />}
-              onClick={() => window.open('/admin/api/accounts/export', '_blank')}
-            >
-              {t('accounts.export', '导出')}
-            </Button>
-            <Button icon={<ReloadOutlined />} loading={refreshAll.isPending} onClick={() => refreshAll.mutate()}>
-              {t('accounts.refreshAll', '刷新全部 Token')}
-            </Button>
-            <Button
-              icon={<ThunderboltOutlined />}
-              loading={testAll.isPending}
-              onClick={() => testAll.mutate()}
-            >
-              {t('accounts.testAll', '测试全部')}
-            </Button>
-            <Popconfirm
-              title={t('accounts.deleteAllConfirm', '将删除全部账号（含 API Key），确认？')}
-              onConfirm={() => deleteAll.mutate()}
-            >
-              <Button danger loading={deleteAll.isPending}>
-                {t('accounts.deleteAll', '清空')}
-              </Button>
-            </Popconfirm>
+            <Dropdown menu={{ items: moreItems, onClick: onMoreClick }} trigger={['click']} placement="bottomRight">
+              <Button icon={<MoreOutlined />} />
+            </Dropdown>
           </>
         }
       />
 
+      {/* 工具栏：筛选 + 池子汇总 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
+        <Space size={8} wrap>
+          <Input
+            allowClear
+            prefix={<SearchOutlined style={{ color: 'var(--ink-3)' }} />}
+            placeholder={t('accounts.searchPlaceholder', '搜索邮箱或账号 ID')}
+            style={{ width: 240 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            style={{ width: 140 }}
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'all', label: t('accounts.allStatus', '全部状态') },
+              { value: 'active', label: t('accounts.active', '活跃') },
+              { value: 'cooldown', label: t('accounts.cooldown', '冷却') },
+              { value: 'expired', label: t('accounts.expired', '失效') },
+            ]}
+          />
+        </Space>
+        <Space size={6} wrap>
+          <span className="c2a-chip">{t('accounts.total', '共')} <span className="c2a-mono">{counts.total}</span></span>
+          <span className="c2a-chip"><span className="c2a-dot" style={{ background: 'var(--success)' }} />{t('accounts.active', '活跃')} <span className="c2a-mono">{counts.active}</span></span>
+          <span className="c2a-chip"><span className="c2a-dot" style={{ background: 'var(--warning)' }} />{t('accounts.cooldown', '冷却')} <span className="c2a-mono">{counts.cooldown}</span></span>
+          <span className="c2a-chip"><span className="c2a-dot" style={{ background: 'var(--danger)' }} />{t('accounts.expired', '失效')} <span className="c2a-mono">{counts.expired}</span></span>
+        </Space>
+      </div>
+
       <Table
         rowKey="accountId"
         loading={accounts.isLoading}
-        dataSource={accounts.data?.accounts ?? []}
+        dataSource={filtered}
         columns={columns}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
+        pagination={{ pageSize: 20, showSizeChanger: false, showTotal: (n) => `${n} accounts` }}
         expandable={{
           expandedRowRender: (row: Account) =>
             row.modelStats && Object.keys(row.modelStats).length > 0 ? (
@@ -508,15 +566,16 @@ export default function Accounts() {
                 pagination={false}
                 dataSource={Object.values(row.modelStats)}
                 columns={[
-                  { title: 'Model', dataIndex: 'modelId', key: 'modelId' },
+                  { title: 'Model', dataIndex: 'modelId', key: 'modelId', render: (v: string) => <span className="c2a-mono">{v}</span> },
                   {
                     title: t('accounts.usage', '调用次数'),
                     dataIndex: 'usageCount',
-                    render: (v: number) => fmtNum(v),
+                    align: 'right' as const,
+                    render: (v: number) => <span className="c2a-mono">{fmtNum(v)}</span>,
                   },
-                  { title: 'In', dataIndex: 'promptTokens', render: (v: number) => fmtNum(v) },
-                  { title: 'Out', dataIndex: 'completionTokens', render: (v: number) => fmtNum(v) },
-                  { title: 'Cached', dataIndex: 'cachedTokens', render: (v: number) => fmtNum(v) },
+                  { title: 'In', dataIndex: 'promptTokens', align: 'right' as const, render: (v: number) => <span className="c2a-mono">{fmtNum(v)}</span> },
+                  { title: 'Out', dataIndex: 'completionTokens', align: 'right' as const, render: (v: number) => <span className="c2a-mono">{fmtNum(v)}</span> },
+                  { title: 'Cached', dataIndex: 'cachedTokens', align: 'right' as const, render: (v: number) => <span className="c2a-mono">{fmtNum(v)}</span> },
                 ]}
               />
             ) : (

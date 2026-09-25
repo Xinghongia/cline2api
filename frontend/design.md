@@ -1,105 +1,79 @@
-# Design — Cline2API Admin（Midnight Aurora）
+# Design — Cline2API Admin（Graphite Indigo v2）
 
 本文件是前端唯一设计权威。所有页面改造前先读这里；与任何参考规则冲突时，以本文件为准。
 需要扩展时**修改本文件**，不要在页面里私自偏离。
 
+> v2 变更（2026-09-25 二轮整改）：v1 的「Midnight Aurora」紫青极光被用户否决——太花里胡哨。
+> 改为「Graphite Indigo」：中性石墨底 + 单一靛蓝强调色，无渐变、无光晕、无背景装饰；
+> 布局按页重排（工具栏/筛选/汇总分层），管理页补搜索筛选能力。
+
 ## 概念
 
-「Midnight Aurora」——深色优先的 API 控制台美学：深墨纸面 + 玻璃面板，紫→青极光渐变只用在
-品牌、主按钮、活动态、图表主线上（占视口 ≤5%）。数据用等宽字体呈现，界面用几何无衬线。
-交互的关键词是**可感知的反馈**：悬停即有位移/发光/流光，绝不静默。
+「Graphite Indigo」——安静的数据控制台。颜色只出现在两类地方：**可交互元素**（选中态、
+主按钮、链接、焦点）和**状态语义**（活跃/冷却/失效、成功/失败）。其余一切都是灰阶。
+数据一律等宽字体。动效只保留有信息量的反馈，不做装饰性动画。
 
 ## Genre
 
-atmospheric（AI 工具/暗色控制台流派）+ modern-minimal 的排版纪律。
+modern-minimal（Linear/Stripe 派的克制 + 数据密度）。
 
-## Theme（定制 OKLCH，经 CSS 变量 + antd token 双通道下发）
+## Theme（定制 OKLCH，CSS 变量 + antd hex 映射双通道）
 
 | 语义 | Dark（主场景） | Light |
 | --- | --- | --- |
-| paper（应用底） | oklch(15% 0.015 278) | oklch(97.6% 0.005 278) |
-| paper-2（面板） | oklch(19% 0.018 278) | oklch(100% 0 0) |
-| paper-3（悬浮/凸起） | oklch(23% 0.02 278) | oklch(98.5% 0.004 278) |
-| ink（主文字） | oklch(93% 0.008 278) | oklch(21% 0.02 278) |
-| ink-2（次文字） | oklch(66% 0.015 278) | oklch(46% 0.02 278) |
-| rule（分隔线） | oklch(29% 0.02 278) | oklch(91% 0.006 278) |
-| accent（极光紫） | oklch(71% 0.17 298) | oklch(54% 0.2 295) |
-| accent-2（青，仅渐变对） | oklch(79% 0.13 205) | oklch(58% 0.12 210) |
-| focus | accent | accent |
+| paper（应用底） | oklch(16.5% 0.004 260) | oklch(97.3% 0.003 260) |
+| paper-2（面板/侧栏） | oklch(19.5% 0.005 260) | oklch(100% 0 0) |
+| paper-3（悬浮/hover） | oklch(23% 0.006 260) | oklch(97.8% 0.003 260) |
+| ink | oklch(93% 0.003 260) | oklch(23% 0.008 260) |
+| ink-2 | oklch(66% 0.006 260) | oklch(46% 0.01 260) |
+| rule | oklch(28% 0.006 260) | oklch(90% 0.004 260) |
+| accent（靛蓝，唯一强调色） | oklch(70% 0.12 268) | oklch(52% 0.16 268) |
+| success / warning / danger | 低饱和绿/琥珀/红，只用于状态点与小 pill | 同 |
 
-状态色：success oklch(72% 0.17 155) · warning oklch(78% 0.15 80) · danger oklch(64% 0.21 25)。
-渐变对固定为 `accent → accent-2`（品牌标、主按钮、活动菜单条、图表主线）。
+禁止：渐变（品牌标一律实底 accent）、发光阴影、背景光晕/点阵装饰、多彩 Tag 堆砌。
 
 ## Typography
 
-- Display/数字：**Space Grotesk Variable**（600/700），用于品牌、页面标题、统计大数字
-- Body：**Inter Variable**（400/500/600），中文回退 PingFang SC / Microsoft YaHei
-- Mono：**JetBrains Mono Variable**，用于模型 ID、API Key、Token 数值、日志、时间
-- 三种字体全部走 @fontsource-variable 本地打包（离线可用，不请求 Google Fonts）
-- 微标签（表头、卡片 eyebrow）：11px、uppercase、letter-spacing 0.08em、ink-2
-- 页面标题 22px/700；统计数字 28px Space Grotesk 等宽 tabular
+- Display/数字：Space Grotesk Variable（品牌标、页面标题、统计大数字）
+- Body：Inter Variable（中文回退 PingFang SC / Microsoft YaHei）
+- Mono：JetBrains Mono Variable（模型 ID、Key、Token、时间、状态值）
+- 全部 @fontsource-variable 本地打包；数字列右对齐 + tabular-nums
 
-## Spacing & Shape
+## 布局体例（每页遵循）
 
-- 4pt 栅格：--space-3xs 4px · 2xs 8px · xs 12px · sm 16px · md 24px · lg 32px
-- 圆角：卡片 14px · 控件 8px · 胶囊 999px
-- 卡片内边距 20px；页面栅格 gutter 16px
-
-## Motion
-
-- 缓动：--ease-out cubic-bezier(0.16, 1, 0.3, 1)；时长 160ms（微）/ 240ms（面）
-- 只动 transform / opacity；`prefers-reduced-motion: reduce` 时全部退化为 ≤150ms 淡入淡出
-- 规定动作：卡片悬停 -2px + 极光描边光晕；按钮悬停流光扫过 + 按下 0.98 缩放；
-  表格行悬停底色 + 左侧 2px 极光条；路由切换 240ms 上浮淡入；统计数字 count-up；
-  状态点呼吸脉冲；侧栏收展 200ms
-- 禁止：bounce/overshoot、入场逐项 stagger、装饰性常驻动画（状态点呼吸除外）
-
-## Microinteractions stance
-
-- 静默成功优先，不用庆祝式 toast
-- 悬停 tooltip 延迟 800ms，焦点 tooltip 0ms
-- 焦点环：2px accent，外扩 2px，不动画
-
-## CTA voice
-
-- 主按钮：accent→accent-2 渐变填充、白字、8px 圆角、悬停流光
-- 次按钮：paper-2 底 + rule 描边，悬停描边转 accent 半透明 + 文字转 accent
-- 危险按钮：danger 描边幽灵款，悬停实底
+- **页头层**：PageHeader（标题 + 副标题 + 高频动作 ≤4 个；低频动作收进「⋯」Dropdown）
+- **工具栏层**：左侧筛选（搜索框 / 下拉过滤），右侧次级操作或汇总 chips，与表格间距 14px
+- **数据层**：表格或卡片栅格； gutter 16px；内容最大宽 1440 居中
+- **汇总 chips**：`共 N · 状态点+计数`，放工具栏右侧，用 .c2a-chip
+- 空态/元信息（上次同步等）用 12px ink-2 文本，不占卡片
 
 ## 组件规范
 
-- **卡片**：paper-2 底、1px rule 描边、无默认阴影；悬停 -2px + 描边转 accent35% + 24px 极光光晕
-- **表格**：表头微标签体例（无底色、无竖分隔）；行悬停 paper-3 + 左侧 2px 极光条；
-  容器圆角 14px 带描边；斑马纹禁止；等宽字体渲染 ID/数值列
-- **状态**：一律「呼吸圆点 + 文字」，禁止彩色 Tag 堆砌（Tag 仅用于分类枚举）
-- **侧栏**：深玻璃（blur + 半透明 paper），品牌区渐变标，菜单项悬停右移 2px，
-  活动态左侧 12px 渐变条 + paper-3 底；可收缩（232px ↔ 72px），收缩时图标 + tooltip，
-  状态持久化 localStorage `c2a_sider_collapsed`；≤992px 自动收缩
-- **顶栏**：左侧折叠按钮 + 当前页标题；右侧语言/主题切换 + 「服务运行中」呼吸状态点
-- **登录页**：极光渐变背景（两团 blob 缓慢漂移，reduced-motion 时静止）+ 玻璃卡片
+- **卡片**：paper-2 实底 + 1px rule 描边 + 低阴影；不做悬停位移/光晕
+- **表格**：表头 12px ink-2 无底色；行悬停 paper-3 + 左侧 2px accent 条；
+  数值列右对齐等宽；分页贴底
+- **状态**：彩点 + 等宽文本的 pill（.c2a-chip），禁止彩色 Tag 表状态
+- **按钮**：主按钮实底 accent（悬停 88% 透明度），次按钮描边悬停变 accent，按下 1px 下移
+- **侧栏**：paper-2 实底，可收缩 232↔72（localStorage `c2a_sider_collapsed`，≤992px 自动收起），
+  选中态 accent-soft 底 + 左侧 3px accent 条
+- **登录页**：细网格线背景 + 实底卡片，无 blob 无渐变
 
-## 什么必须全站一致
+## Motion
 
-accent 渐变与用量 ≤5% · 三字体 · 卡片/表格/按钮体例 · 页头结构 · 状态点语言 · 动效时长
-
-## 什么可以按页不同
-
-图表形态（面积/柱/环）· 表格列结构 · 卡片栅格密度
+- 只保留：路由淡入上移 240ms、行/控件 hover 160ms、统计数字 count-up、按下 1px 位移
+- 缓动 cubic-bezier(0.16,1,0.3,1)；`prefers-reduced-motion` 全部退化 ≤150ms
 
 ## 图表规范
 
-- 全部读 CSS 变量取色（getComputedStyle），随明暗模式切换重绘
-- 主线：accent→accent-2 渐变描边 + 8% 透明渐变填充（面积）；柱：圆角帽 accent；
-  环图：accent / accent-2 / ink-2 / warning / success 序列；网格线 rule 40%；
-  数字轴标签 JetBrains Mono 11px
+- 单色系：accent 主色 + 灰阶辅助，禁止彩虹序列；面积/柱透明度 ≤55%
+- 取色经 `utils/color.ts` 把 CSS 变量换算成 rgb（zrender 不认 oklch）
+- 轴标签 JetBrains Mono 11px；网格线 rule 50%
 
-## Exports
+## 全站一致项
 
-tokens.css（`:root` + `[data-theme='light']` 双块）见 `src/styles/tokens.css`；
-antd 通道：ConfigProvider token（colorPrimary/colorBgLayout/colorText…）只做语义映射，
-视觉个性（流光、光晕、极光条）一律走 global.css 覆盖层，避免绑死 antd 版本。
+accent 单色纪律 · 三字体 · 页头/工具栏/数据三层体例 · 状态 pill 语言 · 动效档位
 
 ## Hallmark 记录
 
-- stamp: `/* Hallmark · genre: atmospheric · macrostructure: Workbench · design-system: design.md · designed-as-app */`
-- theme_axes: dark / grotesk-sans / chromatic-other（紫青极光）
+- stamp: `/* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */`
+- theme: Graphite Indigo (custom v2) · theme_axes: dark / grotesk-sans / cool(单一靛蓝)

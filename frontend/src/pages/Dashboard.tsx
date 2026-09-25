@@ -80,10 +80,10 @@ export default function Dashboard() {
     void mode // 明暗切换时重新读 CSS 变量
     return {
       accent: readVar('--accent'),
-      accent2: readVar('--accent-2'),
       ink: readVar('--ink'),
       ink2: readVar('--ink-2'),
-      rule: readVar('--rule', 0.4),
+      ink3: readVar('--ink-3'),
+      rule: readVar('--rule', 0.5),
       success: readVar('--success'),
       warning: readVar('--warning'),
       danger: readVar('--danger'),
@@ -112,7 +112,7 @@ export default function Dashboard() {
           name: t('dashboard.requests', '累计请求'),
           type: 'bar',
           data: points.map((p) => [p.t * 1000, p.r]),
-          itemStyle: { color: palette.accent, borderRadius: [3, 3, 0, 0], opacity: 0.85 },
+          itemStyle: { color: palette.accent, borderRadius: [3, 3, 0, 0], opacity: 0.55 },
           barMaxWidth: 14,
         },
         {
@@ -122,18 +122,18 @@ export default function Dashboard() {
           smooth: true,
           showSymbol: false,
           data: points.map((p) => [p.t * 1000, p.total]),
-          lineStyle: { color: palette.accent2, width: 2.5, shadowColor: palette.accent2, shadowBlur: 10, shadowOffsetY: 5, shadowOpacity: 0.35 },
-          itemStyle: { color: palette.accent2 },
+          lineStyle: { color: palette.accent, width: 2 },
+          itemStyle: { color: palette.accent },
           areaStyle: {
             color: {
               type: 'linear',
               x: 0, y: 0, x2: 0, y2: 1,
               colorStops: [
-                { offset: 0, color: palette.accent2 },
-                { offset: 1, color: palette.accent2 },
+                { offset: 0, color: palette.accent },
+                { offset: 1, color: palette.accent },
               ],
             },
-            opacity: 0.14,
+            opacity: 0.08,
           },
         },
       ],
@@ -141,11 +141,11 @@ export default function Dashboard() {
   }, [series.data, palette, t])
 
   const upstreamOption = useMemo(() => {
-    const colors = [palette.accent, palette.accent2, palette.warning, palette.success, palette.ink2]
+    const colors = [palette.accent, palette.ink3, palette.warning, palette.success, palette.rule]
     const data = (summary.data?.upstreams ?? []).map((u, i) => ({
       name: u.name || 'cline',
       value: u.totalTokens,
-      itemStyle: { color: colors[i % colors.length], borderRadius: 6, borderWidth: 2, borderColor: 'transparent' },
+      itemStyle: { color: colors[i % colors.length], borderWidth: 2, borderColor: 'transparent' },
     }))
     return {
       backgroundColor: 'transparent',
@@ -181,17 +181,7 @@ export default function Dashboard() {
           type: 'bar',
           data: models.map((m) => m.totalTokens),
           barMaxWidth: 12,
-          itemStyle: {
-            borderRadius: [0, 6, 6, 0],
-            color: {
-              type: 'linear',
-              x: 0, y: 0, x2: 1, y2: 0,
-              colorStops: [
-                { offset: 0, color: palette.accent },
-                { offset: 1, color: palette.accent2 },
-              ],
-            },
-          },
+          itemStyle: { borderRadius: [0, 5, 5, 0], color: palette.accent, opacity: 0.8 },
         },
       ],
     }

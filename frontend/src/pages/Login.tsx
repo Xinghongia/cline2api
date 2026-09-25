@@ -27,9 +27,7 @@ export default function Login({ onSuccess }: Props) {
 
   return (
     <div className="c2a-login">
-      <div className="c2a-blob c2a-blob-a" />
-      <div className="c2a-blob c2a-blob-b" />
-      <div className="c2a-glass" style={{ width: 380, maxWidth: 'calc(100vw - 32px)', padding: '36px 32px 30px', position: 'relative' }}>
+      <div className="c2a-glass" style={{ position: 'relative' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div className="c2a-logo" style={{ margin: '0 auto 14px', width: 48, height: 48, fontSize: 19, borderRadius: 14 }}>
             C2

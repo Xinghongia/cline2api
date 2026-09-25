@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd'
-import { CloudDownloadOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons'
+import { CloudDownloadOutlined, PlusOutlined, SearchOutlined, SyncOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
@@ -108,6 +108,26 @@ export default function Models() {
 
   const dataSource = models.data?.models ?? []
 
+  const [search, setSearch] = useState('')
+  const [costFilter, setCostFilter] = useState<string>('all')
+  const [sourceFilter, setSourceFilter] = useState<string>('all')
+
+  const sourceOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of dataSource) set.add(m.source || 'builtin')
+    return [{ value: 'all', label: t('models.allSources', '全部来源') }, ...[...set].map((s) => ({ value: s, label: s }))]
+  }, [dataSource, t])
+
+  const filtered = useMemo(() => {
+    const kw = search.trim().toLowerCase()
+    return dataSource.filter((m) => {
+      if (costFilter !== 'all' && m.cost !== costFilter) return false
+      if (sourceFilter !== 'all' && (m.source || 'builtin') !== sourceFilter) return false
+      if (kw && !m.id.toLowerCase().includes(kw) && !(m.provider ?? '').toLowerCase().includes(kw)) return false
+      return true
+    })
+  }, [dataSource, search, costFilter, sourceFilter])
+
   const columns = [
     {
       title: 'Model ID',
@@ -115,8 +135,8 @@ export default function Models() {
       key: 'id',
       render: (v: string, row: AdminModel) => (
         <Space size={6}>
-          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span>
-          {row.custom ? <Tag color="purple">{t('models.custom', '自定义')}</Tag> : null}
+          <span className="c2a-mono" style={{ fontSize: 12 }}>{v}</span>
+          {row.custom ? <Tag>{t('models.custom', '自定义')}</Tag> : null}
         </Space>
       ),
     },
@@ -124,38 +144,54 @@ export default function Models() {
       title: t('models.provider', '提供商'),
       dataIndex: 'provider',
       key: 'provider',
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (v: string) => <span className="c2a-mono" style={{ fontSize: 12, color: 'var(--ink-2)' }}>{v || '-'}</span>,
     },
     {
       title: t('models.cost', '计费'),
       dataIndex: 'cost',
       key: 'cost',
-      width: 90,
-      render: (v: string) => (
-        <Tag color={v === 'free' ? 'green' : 'gold'}>{v === 'free' ? t('models.free', '免费') : v}</Tag>
-      ),
+      width: 100,
+      render: (v: string) =>
+        v === 'free' ? (
+          <span className="c2a-chip" style={{ gap: 6 }}>
+            <span className="c2a-dot" style={{ background: 'var(--success)' }} />
+            {t('models.free', '免费')}
+          </span>
+        ) : (
+          <span className="c2a-chip c2a-mono">{v}</span>
+        ),
     },
     {
       title: t('models.source', '来源'),
       dataIndex: 'source',
       key: 'source',
-      width: 90,
-      render: (v: string) => <Tag>{v || 'builtin'}</Tag>,
+      width: 100,
+      render: (v: string) => <span className="c2a-mono" style={{ fontSize: 12, color: 'var(--ink-2)' }}>{v || 'builtin'}</span>,
     },
     {
       title: t('models.context', '上下文/输出'),
       key: 'context',
       width: 140,
+      align: 'right' as const,
       render: (_: unknown, row: AdminModel) =>
-        row.context || row.output ? `${row.context ?? '-'} / ${row.output ?? '-'}` : '-',
+        row.context || row.output ? (
+          <span className="c2a-mono">{`${row.context ?? '-'} / ${row.output ?? '-'}`}</span>
+        ) : (
+          <span style={{ color: 'var(--ink-3)' }}>-</span>
+        ),
     },
     {
-      title: t('models.priceCol', '单价'),
+      title: t('models.priceCol', '单价 $/1M'),
       key: 'price',
-      width: 120,
+      width: 130,
+      align: 'right' as const,
       render: (_: unknown, row: AdminModel) => {
         const pr = models.data?.prices?.[row.id]
-        return pr ? `$${pr.in} / $${pr.out}` : '-'
+        return pr ? (
+          <span className="c2a-mono">{`$${pr.in} / $${pr.out}`}</span>
+        ) : (
+          <span style={{ color: 'var(--ink-3)' }}>-</span>
+        )
       },
     },
     {
@@ -200,29 +236,62 @@ export default function Models() {
               loading={setDefault.isPending}
               options={dataSource.map((m) => ({ value: m.id, label: m.id }))}
             />
-            <Button icon={<SyncOutlined />} loading={syncCline.isPending} onClick={() => syncCline.mutate()}>
-              {t('models.syncCline', '从 Cline 同步')}
-            </Button>
-            <Button icon={<CloudDownloadOutlined />} loading={syncZen.isPending} onClick={() => syncZen.mutate()}>
-              {t('models.syncZen', '从 Zen 同步')}
-            </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
               {t('models.add', '添加模型')}
             </Button>
           </>
         }
       />
-      {models.data?.lastSync ? (
-        <p style={{ color: 'var(--ink-2)', marginTop: -8 }}>
-          {t('models.lastSync', '上次同步')}: {fmtTime(models.data.lastSync.syncedAt)} · {t('models.total', '共')}{' '}
-          {models.data.lastSync.total} {t('models.modelsUnit', '个')}
-        </p>
-      ) : null}
+
+      {/* 工具栏：筛选 + 同步操作 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 6 }}>
+        <Space size={8} wrap>
+          <Input
+            allowClear
+            prefix={<SearchOutlined style={{ color: 'var(--ink-3)' }} />}
+            placeholder={t('models.searchPlaceholder', '搜索模型 ID / 提供商')}
+            style={{ width: 240 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Select
+            style={{ width: 120 }}
+            value={costFilter}
+            onChange={setCostFilter}
+            options={[
+              { value: 'all', label: t('models.allCost', '全部计费') },
+              { value: 'free', label: t('models.free', '免费') },
+              { value: 'pass', label: 'pass' },
+            ]}
+          />
+          <Select
+            style={{ width: 150 }}
+            value={sourceFilter}
+            onChange={setSourceFilter}
+            options={sourceOptions}
+          />
+        </Space>
+        <Space size={8} wrap>
+          <Button icon={<SyncOutlined />} loading={syncCline.isPending} onClick={() => syncCline.mutate()}>
+            {t('models.syncCline', '从 Cline 同步')}
+          </Button>
+          <Button icon={<CloudDownloadOutlined />} loading={syncZen.isPending} onClick={() => syncZen.mutate()}>
+            {t('models.syncZen', '从 Zen 同步')}
+          </Button>
+        </Space>
+      </div>
+      <p style={{ color: 'var(--ink-2)', margin: '0 0 12px', fontSize: 12 }}>
+        {models.data?.lastSync
+          ? `${t('models.lastSync', '上次同步')}: ${fmtTime(models.data.lastSync.syncedAt)} · `
+          : ''}
+        {t('models.total', '共')} <span className="c2a-mono">{dataSource.length}</span>
+        {filtered.length !== dataSource.length ? ` · ${t('models.shown', '显示')} ${filtered.length}` : ''}
+      </p>
       <Table
         rowKey="id"
         size="small"
         loading={models.isLoading}
-        dataSource={dataSource}
+        dataSource={filtered}
         columns={columns}
         pagination={{ pageSize: 25, showSizeChanger: false }}
       />
