@@ -2,6 +2,7 @@ package main
 
 import (
 	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
@@ -163,8 +164,8 @@ func syncClineModels() modelSyncResult {
 	}
 
 	// 与池中现有 remote 模型比较
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	oldRemote := make(map[string]bool)
 	var kept []types.Model
 	for _, m := range p.Models {
@@ -188,8 +189,8 @@ func syncClineModels() modelSyncResult {
 	p.Models = kept
 	res.Total = len(remote)
 	res.Changed = len(res.Added) > 0 || len(res.Removed) > 0
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 
 	remoteModelsEnabledMu.Lock()
 	remoteModelsEnabled = true

@@ -2,6 +2,8 @@ package main
 
 import (
 	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
@@ -21,10 +23,10 @@ func (f freeModelRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 }
 
 func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
-	oldConfig := getProxyConfig()
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		setProxyConfig(oldConfig)
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -36,7 +38,7 @@ func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
 		ExpiresAt:    time.Now().Add(time.Hour).UnixMilli(),
 		Status:       "active",
 	}
-	setProxyConfig(defaultProxyConfig())
+	proxyconfig.Set(proxyconfig.Default())
 
 	var requestBodies []map[string]any
 	refreshCalls := 0
@@ -106,12 +108,12 @@ func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
 }
 
 func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -129,8 +131,8 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testin
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var paths []string
 	var attempts []string
@@ -196,12 +198,12 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testin
 }
 
 func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -219,8 +221,8 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var attempts []string
 	var models []string
@@ -272,12 +274,12 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T
 }
 
 func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -295,8 +297,8 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var attempts []string
 	var models []string
@@ -359,12 +361,12 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 }
 
 func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -382,8 +384,8 @@ func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var attempts []string
 	var models []string
@@ -444,12 +446,12 @@ func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.
 }
 
 func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -473,8 +475,8 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 			freeModelPrimary: time.Now().Add(time.Hour),
 		},
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var attempts []string
 	var models []string
@@ -541,12 +543,12 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 }
 
 func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -560,8 +562,8 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 			freeModelPrimary: time.Now().Add(time.Hour),
 		},
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{account}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{account}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var models []string
 	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -604,12 +606,12 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 }
 
 func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -632,8 +634,8 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 					test.cooldownModel: time.Now().Add(time.Hour),
 				},
 			}
-			pool = &types.AccountPool{Accounts: []*types.Account{account}}
-			setProxyConfig(defaultProxyConfig())
+			pool.State = &types.AccountPool{Accounts: []*types.Account{account}}
+			proxyconfig.Set(proxyconfig.Default())
 
 			var upstreamModel string
 			httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -673,12 +675,12 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 }
 
 func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -693,8 +695,8 @@ func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 	for _, model := range freeModelChain {
 		account.ModelCooldowns[model] = time.Now().Add(time.Hour)
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{account}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{account}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	calls := 0
 	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -717,25 +719,25 @@ func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 }
 
 func TestPickAccountForModelStrictPreservesStrategy(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 	})
 
 	first := &types.Account{AccountID: "first", Status: "active"}
 	second := &types.Account{AccountID: "second", Status: "active"}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
 
 	for _, strategy := range []string{"fill", "round_robin", "random"} {
 		t.Run(strategy, func(t *testing.T) {
-			pool.CurrentIdx = 0
-			cfg := defaultProxyConfig()
+			pool.State.CurrentIdx = 0
+			cfg := proxyconfig.Default()
 			cfg.Strategy = strategy
-			setProxyConfig(cfg)
+			proxyconfig.Set(cfg)
 
-			firstPick := pickAccountForModelStrict(freeModelPrimary)
+			firstPick := pool.PickForModelStrict(freeModelPrimary)
 			if firstPick != first && firstPick != second {
 				t.Fatalf("first pick = %v, want an active account", firstPick)
 			}
@@ -743,7 +745,7 @@ func TestPickAccountForModelStrictPreservesStrategy(t *testing.T) {
 				t.Fatalf("fill first pick = %v, want first account", firstPick)
 			}
 			if strategy == "round_robin" {
-				secondPick := pickAccountForModelStrict(freeModelPrimary)
+				secondPick := pool.PickForModelStrict(freeModelPrimary)
 				if firstPick != first || secondPick != second {
 					t.Fatalf("round_robin picks = %v, %v, want first, second", firstPick, secondPick)
 				}
@@ -754,12 +756,12 @@ func TestPickAccountForModelStrictPreservesStrategy(t *testing.T) {
 
 // 显式模型请求在 429（模型冷却）时应沿 free 链自动降级到下一个可用模型。
 func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -772,8 +774,8 @@ func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 				ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 				Status:      "active",
 			}
-			pool = &types.AccountPool{Accounts: []*types.Account{account}}
-			setProxyConfig(defaultProxyConfig())
+			pool.State = &types.AccountPool{Accounts: []*types.Account{account}}
+			proxyconfig.Set(proxyconfig.Default())
 
 			var attempted []string
 			httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -831,12 +833,12 @@ func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 
 // 非冷却类上游错误（如 500）会先试完整条回退链，全部失败后才报错。
 func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -848,8 +850,8 @@ func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{account}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{account}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	calls := 0
 	var upstreamModel string
@@ -885,14 +887,14 @@ func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 }
 
 func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	restoreLogs := reqlog.SwapForTest(nil)
 	t.Cleanup(restoreLogs)
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -903,8 +905,8 @@ func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *te
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{account}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{account}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	calls := 0
 	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -937,8 +939,8 @@ func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *te
 }
 
 func TestPickAccountForModelLeastUsedSpreadsUsage(t *testing.T) {
-	oldPool := pool
-	t.Cleanup(func() { pool = oldPool })
+	oldPool := pool.State
+	t.Cleanup(func() { pool.State = oldPool })
 
 	heavy := &types.Account{
 		AccountID:   "heavy",
@@ -960,12 +962,12 @@ func TestPickAccountForModelLeastUsedSpreadsUsage(t *testing.T) {
 			freeModelPrimary: {ModelID: freeModelPrimary, UsageCount: 2},
 		},
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{heavy, light}}
+	pool.State = &types.AccountPool{Accounts: []*types.Account{heavy, light}}
 
 	for i := 0; i < 5; i++ {
-		acc := pickAccountForModelLeastUsed(freeModelPrimary)
+		acc := pool.PickForModelLeastUsed(freeModelPrimary)
 		if acc == nil {
-			t.Fatal("pickAccountForModelLeastUsed returned nil with eligible accounts")
+			t.Fatal("pool.PickForModelLeastUsed returned nil with eligible accounts")
 		}
 		if acc.AccountID != "light" {
 			t.Fatalf("pick %d: got account %q, want the least-used account \"light\"", i+1, acc.AccountID)
@@ -995,12 +997,12 @@ func TestIsFreeModelEntry(t *testing.T) {
 }
 
 func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 	})
 
@@ -1021,8 +1023,8 @@ func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
-	setProxyConfig(defaultProxyConfig())
+	pool.State = &types.AccountPool{Accounts: []*types.Account{first, second}}
+	proxyconfig.Set(proxyconfig.Default())
 
 	var chosen []string
 	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
@@ -1049,8 +1051,8 @@ func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
 }
 
 func TestSortModelsByAvailabilityPrefersAvailableThenLeastUsed(t *testing.T) {
-	oldPool := pool
-	t.Cleanup(func() { pool = oldPool })
+	oldPool := pool.State
+	t.Cleanup(func() { pool.State = oldPool })
 
 	acc := &types.Account{
 		AccountID:      "acc-one",
@@ -1063,10 +1065,10 @@ func TestSortModelsByAvailabilityPrefersAvailableThenLeastUsed(t *testing.T) {
 			freeModelFallback: {ModelID: freeModelFallback, UsageCount: 3},
 		},
 	}
-	pool = &types.AccountPool{Accounts: []*types.Account{acc}}
+	pool.State = &types.AccountPool{Accounts: []*types.Account{acc}}
 
 	chain := []string{freeModelPrimary, freeModelFallback}
-	got := sortModelsByAvailability(chain)
+	got := pool.SortModelsByAvailability(chain)
 	if got[0] != freeModelFallback {
 		t.Fatalf("first model = %q, want the less-used %q", got[0], freeModelFallback)
 	}
@@ -1076,19 +1078,19 @@ func TestSortModelsByAvailabilityPrefersAvailableThenLeastUsed(t *testing.T) {
 }
 
 func TestOnlyFreeConfigRoundTrip(t *testing.T) {
-	oldConfig := getProxyConfig()
-	t.Cleanup(func() { setProxyConfig(oldConfig) })
+	oldConfig := proxyconfig.Get()
+	t.Cleanup(func() { proxyconfig.Set(oldConfig) })
 
-	setProxyConfig(defaultProxyConfig())
-	if getProxyConfig().OnlyFree {
+	proxyconfig.Set(proxyconfig.Default())
+	if proxyconfig.Get().OnlyFree {
 		t.Fatal("default OnlyFree = true, want false")
 	}
 
 	on := true
-	cfg := getProxyConfig()
+	cfg := proxyconfig.Get()
 	cfg.OnlyFree = on
-	setProxyConfig(cfg)
-	if !getProxyConfig().OnlyFree {
-		t.Fatal("OnlyFree not persisted after setProxyConfig")
+	proxyconfig.Set(cfg)
+	if !proxyconfig.Get().OnlyFree {
+		t.Fatal("OnlyFree not persisted after proxyconfig.Set")
 	}
 }

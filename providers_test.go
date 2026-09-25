@@ -2,6 +2,8 @@ package main
 
 import (
 	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"io"
@@ -13,21 +15,21 @@ import (
 
 // 自定义 provider 命中时优先走 provider 上游。
 func TestCustomProviderServesModel(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 		_ = deleteProvider("prov_test1")
 	})
 
-	pool = &types.AccountPool{Accounts: []*types.Account{{
+	pool.State = &types.AccountPool{Accounts: []*types.Account{{
 		AccountID: "a", Email: "a@x.com", AccessToken: "t",
 		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(), Status: "active",
 	}}}
-	setProxyConfig(defaultProxyConfig())
+	proxyconfig.Set(proxyconfig.Default())
 
 	upstreamModel := ""
 	providerCalls := 0
@@ -84,21 +86,21 @@ func TestCustomProviderServesModel(t *testing.T) {
 
 // provider 失败（冷却）后自动降级到回退链 → cline 池，客户端无感知。
 func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
-	oldPool := pool
-	oldConfig := getProxyConfig()
+	oldPool := pool.State
+	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
-		pool = oldPool
-		setProxyConfig(oldConfig)
+		pool.State = oldPool
+		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 		_ = deleteProvider("prov_test2")
 	})
 
-	pool = &types.AccountPool{Accounts: []*types.Account{{
+	pool.State = &types.AccountPool{Accounts: []*types.Account{{
 		AccountID: "a", Email: "a@x.com", AccessToken: "t",
 		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(), Status: "active",
 	}}}
-	setProxyConfig(defaultProxyConfig())
+	proxyconfig.Set(proxyconfig.Default())
 
 	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "provider.test" {

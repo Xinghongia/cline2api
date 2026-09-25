@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
@@ -30,7 +31,7 @@ import (
 // opencode Zen 免费模型支持
 // 按请求中的 model 自动分流：zen 免费模型 → https://opencode.ai/zen/v1；
 // zen 付费模型 → 400 拒绝；其余 → Cline 账号池。
-// zen 模型与 Cline 远程模型同存于 pool.Models（Source="zen"），
+// zen 模型与 Cline 远程模型同存于 pool.State 的 Models（Source="zen"），
 // 同步采用全量替换：官方下架的模型自动移除，不会残留僵尸条目。
 // ============================================================================
 
@@ -133,18 +134,18 @@ func isZenSource(m types.Model) bool {
 	return m.Source == "zen" || m.Source == "seed"
 }
 
-// currentZenModels 返回当前生效的 zen 模型（pool 中 zen 来源条目；
+// currentZenModels 返回当前生效的 zen 模型（pool.State 中 zen 来源条目；
 // 从未同步成功时回退到种子表）。
 func currentZenModels() []types.Model {
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	var zen []types.Model
 	for _, m := range p.Models {
 		if isZenSource(m) {
 			zen = append(zen, m)
 		}
 	}
-	poolMu.Unlock()
+	pool.Mu.Unlock()
 	if len(zen) > 0 || remoteZenActive() {
 		return zen
 	}
@@ -220,15 +221,15 @@ func routeModel(id string) string {
 		return "reject"
 	}
 	// 极端情况：同名 ID 同时是 cline 模型（自定义冲突）→ 让给 cline
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	for _, pm := range p.Models {
 		if !isZenSource(pm) && pm.ID == strings.TrimPrefix(strings.TrimSpace(id), "opencode/") {
-			poolMu.Unlock()
+			pool.Mu.Unlock()
 			return "cline"
 		}
 	}
-	poolMu.Unlock()
+	pool.Mu.Unlock()
 
 	cfg := getZenConfig()
 	if cfg.Failover && zenFailedNow() {
@@ -1045,7 +1046,7 @@ func describeZenProxy() string {
 
 // ============ 模型同步 ============
 
-// syncZenModels 拉取 zen 官方 /models 并全量替换 pool 中 Source=="zen" 条目：
+// syncZenModels 拉取 zen 官方 /models 并全量替换 pool.State 中 Source=="zen" 条目：
 // 计算新增/移除清单 —— 官方下架的模型自动从列表消失，不留僵尸条目。
 // 自定义模型（Custom=true 或其他 Source）不受影响。
 func syncZenModels() modelSyncResult {
@@ -1129,7 +1130,7 @@ func syncZenModels() modelSyncResult {
 	// 补全上下文信息：远程接口不带 context/output。
 	// 用户在管理页锁定过的条目（MetaLocked）保留原值；
 	// 其余按种子表刷新（种子值更新时旧条目自动跟进），新模型回退默认。
-	p := loadPool()
+	p := pool.Load()
 	oldZen := make(map[string]types.Model, len(p.Models))
 	for _, m := range p.Models {
 		if m.Source == "zen" {
@@ -1160,7 +1161,7 @@ func syncZenModels() modelSyncResult {
 		remote[i] = fillMeta(remote[i])
 	}
 
-	poolMu.Lock()
+	pool.Mu.Lock()
 	oldIDs := make(map[string]bool)
 	var kept []types.Model
 	for _, m := range p.Models {
@@ -1184,8 +1185,8 @@ func syncZenModels() modelSyncResult {
 	p.Models = kept
 	res.Total = len(remote)
 	res.Changed = len(res.Added) > 0 || len(res.Removed) > 0
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 
 	remoteZenEnabledMu.Lock()
 	remoteZenEnabled = true

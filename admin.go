@@ -1,7 +1,8 @@
 package main
 
 import (
-	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
@@ -13,7 +14,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -110,7 +110,7 @@ func registerAdminRoutes(mux *http.ServeMux) {
 // requireAdminAuth 后台访问鉴权中间件：未设置密码直接放行，否则校验会话 cookie。
 func requireAdminAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if loadPool().AdminPasswordHash == "" {
+		if pool.Load().AdminPasswordHash == "" {
 			next(w, r)
 			return
 		}
@@ -142,8 +142,8 @@ func hashAdminPassword(saltHex, password string) string {
 
 // setAdminPassword 设置/修改/清除后台密码（空 = 清除），并清空所有会话强制重新登录。
 func setAdminPassword(password string) {
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	if password == "" {
 		p.AdminPasswordHash = ""
 		p.AdminPasswordSalt = ""
@@ -155,8 +155,8 @@ func setAdminPassword(password string) {
 		p.AdminPasswordSalt = hex.EncodeToString(salt)
 		p.AdminPasswordHash = hashAdminPassword(p.AdminPasswordSalt, password)
 	}
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 	adminSessionsMu.Lock()
 	adminSessions = make(map[string]time.Time)
 	adminSessionsMu.Unlock()
@@ -164,9 +164,9 @@ func setAdminPassword(password string) {
 
 // verifyAdminPassword 校验后台密码（未设置密码时返回 false）。
 func verifyAdminPassword(password string) bool {
-	p := loadPool()
-	poolMu.Lock()
-	defer poolMu.Unlock()
+	p := pool.Load()
+	pool.Mu.Lock()
+	defer pool.Mu.Unlock()
 	if p.AdminPasswordHash == "" {
 		return false
 	}
@@ -201,7 +201,7 @@ func handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_json")})
 		return
 	}
-	if loadPool().AdminPasswordHash == "" {
+	if pool.Load().AdminPasswordHash == "" {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "password_not_enabled")})
 		return
 	}
@@ -271,13 +271,13 @@ func handleAdminAccounts(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	accounts := listAccounts()
+	accounts := pool.ListAccounts()
 	writeAPI(w, http.StatusOK, apiResponse{
 		Success: true,
 		Data: map[string]any{
 			"accounts":  accounts,
 			"total":     len(accounts),
-			"poolIndex": loadPool().CurrentIdx,
+			"poolIndex": pool.Load().CurrentIdx,
 		},
 	})
 }
@@ -310,7 +310,7 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 去重：该 refreshToken 已存在时直接返回，不重复添加
-	if existing := findAccountByRefreshToken(req.RefreshToken); existing != nil {
+	if existing := pool.FindByRefreshToken(req.RefreshToken); existing != nil {
 		writeAPI(w, http.StatusOK, apiResponse{
 			Success: true,
 			Message: tAPI(r, "account_exists", existing.Email),
@@ -325,14 +325,14 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate by refreshing
-	resp, err := refreshClineToken(req.RefreshToken)
+	resp, err := pool.RefreshClineToken(req.RefreshToken)
 	if err != nil {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_refresh_token", err.Error())})
 		return
 	}
 
 	if req.Email == "" {
-		req.Email = fmt.Sprintf("user_%d", len(loadPool().Accounts)+1)
+		req.Email = fmt.Sprintf("user_%d", len(pool.Load().Accounts)+1)
 	}
 
 	acc := &types.Account{
@@ -340,7 +340,7 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 		Email:        req.Email,
 		RefreshToken: req.RefreshToken,
 		AccessToken:  "workos:" + resp.Data.AccessToken,
-		ExpiresAt:    parseExpiry(resp.Data.ExpiresAt) - 60000,
+		ExpiresAt:    pool.ParseExpiry(resp.Data.ExpiresAt) - 60000,
 		Status:       "active",
 		CreatedAt:    time.Now(),
 	}
@@ -348,8 +348,8 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 		acc.RefreshToken = resp.Data.RefreshToken
 	}
 
-	addAccount(acc)
-	log.Printf("types.Account added via API: %s", req.Email)
+	pool.Add(acc)
+	log.Printf("Account added via API: %s", req.Email)
 
 	writeAPI(w, http.StatusOK, apiResponse{
 		Success: true,
@@ -388,7 +388,7 @@ func handleAdminAccountDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if removeAccount(req.AccountID) {
+	if pool.Remove(req.AccountID) {
 		writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "account_deleted")})
 	} else {
 		writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "account_not_found")})
@@ -466,11 +466,11 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 			Email:        email,
 			RefreshToken: cline.Data.RefreshToken,
 			AccessToken:  "workos:" + cline.Data.AccessToken,
-			ExpiresAt:    parseExpiry(cline.Data.ExpiresAt) - 60000,
+			ExpiresAt:    pool.ParseExpiry(cline.Data.ExpiresAt) - 60000,
 			Status:       "active",
 			CreatedAt:    time.Now(),
 		}
-		addAccount(acc)
+		pool.Add(acc)
 
 		oauthSessionsMu.Lock()
 		state.Done = true
@@ -572,11 +572,11 @@ func handleSSOImport(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			// 去重：与账号池中已有账号或本批次内重复的 token，跳过而不是重复添加
-			if isDuplicateImportToken(token, seen) {
+			if pool.IsDuplicateImportToken(token, seen) {
 				duplicates++
 				continue
 			}
-			resp, err := refreshClineToken(token)
+			resp, err := pool.RefreshClineToken(token)
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("token %s...: %v", strutil.Truncate(token, 16), err))
 				continue
@@ -591,11 +591,11 @@ func handleSSOImport(w http.ResponseWriter, r *http.Request) {
 				Email:        email,
 				RefreshToken: token,
 				AccessToken:  "workos:" + resp.Data.AccessToken,
-				ExpiresAt:    parseExpiry(resp.Data.ExpiresAt) - 60000,
+				ExpiresAt:    pool.ParseExpiry(resp.Data.ExpiresAt) - 60000,
 				Status:       "active",
 				CreatedAt:    time.Now(),
 			}
-			addAccount(acc)
+			pool.Add(acc)
 			imported++
 		}
 	}
@@ -656,11 +656,11 @@ func handleBatchImport(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		// 去重：与账号池中已有账号或本批次内重复的 token，跳过而不是重复添加
-		if isDuplicateImportToken(token, seen) {
+		if pool.IsDuplicateImportToken(token, seen) {
 			duplicates++
 			continue
 		}
-		resp, err := refreshClineToken(token)
+		resp, err := pool.RefreshClineToken(token)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("%s: %v", t.Email, err))
 			continue
@@ -674,11 +674,11 @@ func handleBatchImport(w http.ResponseWriter, r *http.Request) {
 			Email:        email,
 			RefreshToken: token,
 			AccessToken:  "workos:" + resp.Data.AccessToken,
-			ExpiresAt:    parseExpiry(resp.Data.ExpiresAt) - 60000,
+			ExpiresAt:    pool.ParseExpiry(resp.Data.ExpiresAt) - 60000,
 			Status:       "active",
 			CreatedAt:    time.Now(),
 		}
-		addAccount(acc)
+		pool.Add(acc)
 		imported++
 	}
 
@@ -701,7 +701,7 @@ func handleExportAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := loadPool()
+	p := pool.Load()
 	type exportToken struct {
 		RefreshToken string `json:"refreshToken"`
 		Email        string `json:"email"`
@@ -749,14 +749,14 @@ func handleAdminRefreshAll(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	for _, a := range p.Accounts {
-		if err := refreshAccountToken(a); err != nil {
+		if err := pool.RefreshAccountToken(a); err != nil {
 			log.Printf("Refresh failed for %s: %v", a.Email, err)
 		}
 	}
-	poolMu.Unlock()
+	pool.Mu.Unlock()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "tokens_refreshed")})
 }
 
@@ -766,10 +766,10 @@ func handleAdminDeleteAll(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	poolMu.Lock()
-	pool = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}}
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Lock()
+	pool.State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}}
+	pool.Mu.Unlock()
+	pool.Save()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "accounts_deleted")})
 }
 
@@ -794,7 +794,7 @@ func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acc := getAccountByID(req.AccountID)
+	acc := pool.GetByID(req.AccountID)
 	if acc == nil {
 		writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "account_not_found")})
 		return
@@ -802,7 +802,7 @@ func handleAdminAccountReset(w http.ResponseWriter, r *http.Request) {
 
 	// Reset status to active and refresh token, but preserve usage/token statistics.
 	acc.Status = "active"
-	if err := refreshAccountToken(acc); err != nil {
+	if err := pool.RefreshAccountToken(acc); err != nil {
 		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: tAPI(r, "reset_failed", err.Error())})
 		return
 	}
@@ -828,20 +828,20 @@ func handleAdminAccountTest(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.Unmarshal(body, &req)
 
-	p := loadPool()
+	p := pool.Load()
 	var targets []*types.Account
 	if req.AccountID != "" {
-		acc := getAccountByID(req.AccountID)
+		acc := pool.GetByID(req.AccountID)
 		if acc == nil {
 			writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "account_not_found")})
 			return
 		}
 		targets = []*types.Account{acc}
 	} else {
-		poolMu.Lock()
+		pool.Mu.Lock()
 		targets = make([]*types.Account, len(p.Accounts))
 		copy(targets, p.Accounts)
-		poolMu.Unlock()
+		pool.Mu.Unlock()
 	}
 
 	results := make([]accountTestResult, 0, len(targets))
@@ -854,85 +854,8 @@ func handleAdminAccountTest(w http.ResponseWriter, r *http.Request) {
 		Data:    map[string]any{"results": results},
 	})
 }
-
-// Global proxy config (mutable via API, persisted to .cline-config.json)
-var (
-	proxyConfig   = loadProxyConfigFromDisk()
-	proxyConfigMu sync.Mutex
-)
-
-type proxyConfigData struct {
-	Strategy string            `json:"strategy"`
-	Headers  map[string]string `json:"headers"`
-	// ModelChain 冷却/降级时的模型回退顺序（管理员可配）。
-	// 空 = 使用内置 free 链（glm-5.3-flash → deepseek-v4-flash → longcat-2.0）。
-	ModelChain []string `json:"modelChain,omitempty"`
-	OnlyFree   bool     `json:"onlyFree"` // 只显示免费模型：开启后 /models、/v1/models 仅返回免费模型
-}
-
-func defaultProxyConfig() *proxyConfigData {
-	return &proxyConfigData{
-		Strategy: "round_robin",
-		Headers: map[string]string{
-			"User-Agent":         "Cline/3.0.47",
-			"HTTP-Referer":       "https://cline.bot",
-			"X-Title":            "Cline",
-			"X-IS-MULTIROOT":     "false",
-			"X-CLIENT-TYPE":      "cline-cli",
-			"X-CLIENT-VERSION":   "3.0.47",
-			"X-PLATFORM":         "terminal",
-			"X-PLATFORM-VERSION": "3.0.47",
-			"X-CORE-VERSION":     "0.0.66",
-		},
-	}
-}
-
-const proxyConfigPath = ".cline-config.json"
-
-// loadProxyConfigFromDisk 启动时加载持久化的代理配置（轮询策略/请求头），
-// 文件不存在或损坏时回退默认值。apphome.ResolveDataPath 为纯函数，包级初始化安全。
-func loadProxyConfigFromDisk() *proxyConfigData {
-	cfg := defaultProxyConfig()
-	if data, err := os.ReadFile(apphome.ResolveDataPath(proxyConfigPath)); err == nil {
-		if err := json.Unmarshal(data, cfg); err != nil {
-			log.Printf("proxy config parse failed: %v", err)
-		}
-	}
-	switch cfg.Strategy {
-	case "round_robin", "fill", "random":
-	default:
-		cfg.Strategy = "round_robin"
-	}
-	return cfg
-}
-
-// saveProxyConfigLocked 落盘当前配置（调用方需持有 proxyConfigMu）。
-func saveProxyConfigLocked() {
-	data, err := json.MarshalIndent(proxyConfig, "", "  ")
-	if err != nil {
-		return
-	}
-	if err := os.WriteFile(apphome.ResolveDataPath(proxyConfigPath), data, 0600); err != nil {
-		log.Printf("proxy config save failed: %v", err)
-	}
-}
-
-func getProxyConfig() *proxyConfigData {
-	proxyConfigMu.Lock()
-	defer proxyConfigMu.Unlock()
-	return proxyConfig
-}
-
-func setProxyConfig(c *proxyConfigData) {
-	proxyConfigMu.Lock()
-	defer proxyConfigMu.Unlock()
-	proxyConfig = c
-	saveProxyConfigLocked()
-}
-
-// GET /admin/api/keys
 func handleAdminGetKeys(w http.ResponseWriter, r *http.Request) {
-	p := loadPool()
+	p := pool.Load()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"keys": p.Keys}})
 }
 
@@ -943,11 +866,11 @@ func handleAdminGenerateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := fmt.Sprintf("cline_%x_%x", time.Now().UnixMilli(), time.Now().UnixNano()%1000000)
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	p.Keys = append(p.Keys, key)
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"key": key}})
 }
 
@@ -970,22 +893,22 @@ func handleAdminDeleteKey(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_json")})
 		return
 	}
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	for i, k := range p.Keys {
 		if k == req.Key {
 			p.Keys = append(p.Keys[:i], p.Keys[i+1:]...)
 			break
 		}
 	}
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "key_deleted")})
 }
 
 // GET /admin/api/config
 func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
-	cfg := getProxyConfig()
+	cfg := proxyconfig.Get()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
 		"address":      fmt.Sprintf("%s:%d", effectiveAdminHost(listenHost), listenPort),
 		"host":         listenHost,
@@ -993,12 +916,12 @@ func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 		"modelChain":   cfg.ModelChain,
 		"version":      appVersion,
 		"zenHeaders":   getZenConfig().ZenHeaders,
-		"poolPath":     poolPath,
+		"pool.Path":    pool.Path,
 		"defaultModel": getDefaultModel(),
 		"headers":      cfg.Headers,
 		"onlyFree":     cfg.OnlyFree,
 		"localIPs":     detectLocalIPs(),
-		"hasPassword":  loadPool().AdminPasswordHash != "",
+		"hasPassword":  pool.Load().AdminPasswordHash != "",
 	}})
 }
 
@@ -1028,7 +951,7 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := getProxyConfig()
+	cfg := proxyconfig.Get()
 	changed := false
 	restarting := false
 
@@ -1092,11 +1015,11 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 			writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_default_model")})
 			return
 		}
-		p := loadPool()
-		poolMu.Lock()
+		p := pool.Load()
+		pool.Mu.Lock()
 		p.DefaultModel = req.DefaultModel
-		poolMu.Unlock()
-		savePool()
+		pool.Mu.Unlock()
+		pool.Save()
 	}
 
 	if req.Host != "" {
@@ -1114,16 +1037,16 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 			writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_host")})
 			return
 		}
-		p := loadPool()
-		poolMu.Lock()
+		p := pool.Load()
+		pool.Mu.Lock()
 		p.ListenHost = req.Host
-		poolMu.Unlock()
-		savePool()
+		pool.Mu.Unlock()
+		pool.Save()
 		restarting = true
 	}
 
 	if changed {
-		setProxyConfig(cfg)
+		proxyconfig.Set(cfg)
 	}
 
 	if restarting {
@@ -1213,8 +1136,8 @@ func handleAdminModelAdd(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	p.Models = append(p.Models, types.Model{
 		ID:       req.ID,
 		Provider: provider,
@@ -1222,8 +1145,8 @@ func handleAdminModelAdd(w http.ResponseWriter, r *http.Request) {
 		Status:   "active",
 		Custom:   true,
 	})
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "model_added")})
 }
@@ -1254,14 +1177,14 @@ func handleAdminModelDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	found := false
 	for i, m := range p.Models {
 		if m.ID == req.ID {
 			// 仅允许删除自定义模型
 			if !m.Custom {
-				poolMu.Unlock()
+				pool.Mu.Unlock()
 				writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "cannot_delete_builtin")})
 				return
 			}
@@ -1271,7 +1194,7 @@ func handleAdminModelDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !found {
-		poolMu.Unlock()
+		pool.Mu.Unlock()
 		writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "model_not_found")})
 		return
 	}
@@ -1279,8 +1202,8 @@ func handleAdminModelDelete(w http.ResponseWriter, r *http.Request) {
 	if p.DefaultModel == req.ID {
 		p.DefaultModel = ""
 	}
-	poolMu.Unlock()
-	savePool()
+	pool.Mu.Unlock()
+	pool.Save()
 
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "model_deleted")})
 }
@@ -1318,8 +1241,8 @@ func handleAdminModelContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := loadPool()
-	poolMu.Lock()
+	p := pool.Load()
+	pool.Mu.Lock()
 	found := false
 	for i, m := range p.Models {
 		if m.ID == req.ID {
@@ -1331,12 +1254,12 @@ func handleAdminModelContext(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	poolMu.Unlock()
+	pool.Mu.Unlock()
 	if !found {
 		writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "model_not_found")})
 		return
 	}
-	savePool()
+	pool.Save()
 	log.Printf("  model context updated: %s ctx=%d out=%d", req.ID, req.Context, req.Output)
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "model_context_saved")})
 }
@@ -1348,7 +1271,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p := loadPool()
+	p := pool.Load()
 	active, cooldown, expired := 0, 0, 0
 	var usageCount, promptTokens, completionTokens, totalTokens, cachedTokens int64
 	for _, a := range p.Accounts {
@@ -1379,8 +1302,8 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"completionTokens": completionTokens,
 			"totalTokens":      totalTokens,
 			"cachedTokens":     cachedTokens,
-			"strategy":         getProxyConfig().Strategy,
-			"modelChain":       getProxyConfig().ModelChain,
+			"strategy":         proxyconfig.Get().Strategy,
+			"modelChain":       proxyconfig.Get().ModelChain,
 			"version":          appVersion,
 			// opencode zen 免费模型今日用量（从请求日志聚合）
 			"opencodeToday": opencodeUsageToday(),

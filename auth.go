@@ -2,7 +2,9 @@ package main
 
 import (
 	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/strutil"
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -17,7 +19,6 @@ const (
 	workosClientID        = "client_01K3A541FN8TA3EPPHTD2325AR"
 	workosDeviceAuthURL   = "https://api.workos.com/user_management/authorize/device"
 	workosAuthenticateURL = "https://api.workos.com/user_management/authenticate"
-	clineAPIBase          = "https://api.cline.bot/api/v1"
 )
 
 type credentials struct {
@@ -51,13 +52,6 @@ type clineAuthResp struct {
 	} `json:"data"`
 }
 
-type clineRefreshResp struct {
-	Data struct {
-		AccessToken  string `json:"accessToken"`
-		RefreshToken string `json:"refreshToken"`
-		ExpiresAt    any    `json:"expiresAt"`
-	} `json:"data"`
-}
 
 var (
 	cachedToken      string
@@ -193,7 +187,7 @@ func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, erro
 		"accessToken":  workosAccess,
 		"refreshToken": workosRefresh,
 	}
-	resp, err := httpx.PostJSON(clineAPIBase+"/auth/register", body)
+	resp, err := httpx.PostJSON(types.ClineAPIBase+"/auth/register", body)
 	if err != nil {
 		return nil, fmt.Errorf("cline register: %w", err)
 	}
@@ -211,27 +205,6 @@ func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, erro
 	return &c, nil
 }
 
-func refreshClineToken(refreshToken string) (*clineRefreshResp, error) {
-	body := map[string]string{
-		"refreshToken": refreshToken,
-		"grantType":    "refresh_token",
-	}
-	resp, err := httpx.PostJSON(clineAPIBase+"/auth/refresh", body)
-	if err != nil {
-		return nil, fmt.Errorf("cline refresh: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("cline refresh failed: %d", resp.StatusCode)
-	}
-
-	var c clineRefreshResp
-	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil {
-		return nil, fmt.Errorf("cline refresh decode: %w", err)
-	}
-	return &c, nil
-}
 
 func getToken() (string, error) {
 	if cachedToken != "" && time.Now().UnixMilli() < cachedExpiry {
@@ -240,14 +213,14 @@ func getToken() (string, error) {
 
 	creds := loadCredentials()
 	if creds != nil && creds.RefreshToken != "" {
-		resp, err := refreshClineToken(creds.RefreshToken)
+		resp, err := pool.RefreshClineToken(creds.RefreshToken)
 		if err == nil && resp.Data.AccessToken != "" {
 			cachedToken = "workos:" + resp.Data.AccessToken
 			cachedRefreshTok = resp.Data.RefreshToken
 			if cachedRefreshTok == "" {
 				cachedRefreshTok = creds.RefreshToken
 			}
-			cachedExpiry = parseExpiry(resp.Data.ExpiresAt) - 60000
+			cachedExpiry = pool.ParseExpiry(resp.Data.ExpiresAt) - 60000
 			saveCredentials(cachedRefreshTok)
 			return cachedToken, nil
 		}
@@ -256,26 +229,6 @@ func getToken() (string, error) {
 	return "", fmt.Errorf("no valid credentials. Run with --login flag first")
 }
 
-func parseExpiry(exp any) int64 {
-	switch v := exp.(type) {
-	case float64:
-		return int64(v)
-	case int64:
-		return v
-	case int:
-		return int64(v)
-	case string:
-		t, err := time.Parse(time.RFC3339, v)
-		if err == nil {
-			return t.UnixMilli()
-		}
-		t, err = time.Parse(time.RFC3339Nano, v)
-		if err == nil {
-			return t.UnixMilli()
-		}
-	}
-	return 0
-}
 
 func doLogin() error {
 	fmt.Println()
@@ -331,7 +284,7 @@ func doLogin() error {
 	saveCredentials(cline.Data.RefreshToken)
 	cachedToken = "workos:" + cline.Data.AccessToken
 	cachedRefreshTok = cline.Data.RefreshToken
-	cachedExpiry = parseExpiry(cline.Data.ExpiresAt) - 60000
+	cachedExpiry = pool.ParseExpiry(cline.Data.ExpiresAt) - 60000
 
 	email := "unknown"
 	if cline.Data.UserInfo != nil && cline.Data.UserInfo.Email != "" {
@@ -372,4 +325,72 @@ func openBrowser(url string) error {
 
 func isWindows() bool {
 	return strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")
+}
+func addAccountFromDeviceAuth() (*types.Account, error) {
+	fmt.Println()
+	fmt.Println("=== Add New Cline Account (OAuth) ===")
+	fmt.Println()
+
+	device, err := workosDeviceAuth()
+	if err != nil {
+		return nil, err
+	}
+
+	authURL := device.VerificationURIComplete
+	if authURL == "" {
+		authURL = device.VerificationURI
+	}
+
+	fmt.Println("  1. Open this URL in your browser:")
+	fmt.Println("     " + authURL)
+	fmt.Println("  2. Enter code: " + device.UserCode)
+	fmt.Println("  3. Log in with Google, GitHub, or email")
+	fmt.Println()
+
+	_ = openBrowser(authURL)
+	fmt.Println("  Waiting for authorization...")
+
+	interval := device.Interval
+	if interval < 5 {
+		interval = 5
+	}
+	expiresIn := device.ExpiresIn
+	if expiresIn <= 0 {
+		expiresIn = 300
+	}
+
+	workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Println("  WorkOS authorized. Registering with Cline...")
+
+	cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	if cline.Data.RefreshToken == "" {
+		return nil, fmt.Errorf("cline registration missing refresh token")
+	}
+
+	email := "unknown"
+	if cline.Data.UserInfo != nil && cline.Data.UserInfo.Email != "" {
+		email = cline.Data.UserInfo.Email
+	}
+
+	acc := &types.Account{
+		AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
+		Email:        email,
+		RefreshToken: cline.Data.RefreshToken,
+		AccessToken:  "workos:" + cline.Data.AccessToken,
+		ExpiresAt:    pool.ParseExpiry(cline.Data.ExpiresAt) - 60000,
+		Status:       "active",
+		CreatedAt:    time.Now(),
+	}
+
+	pool.Add(acc)
+	fmt.Printf("  Account added! Email: %s\n", email)
+	return acc, nil
 }
