@@ -1227,24 +1227,16 @@ func LastZenModelSync() cline.ModelSyncResult {
 	return lastZenSync
 }
 
-// OpencodeUsageToday 从请求日志聚合今日 opencode 上游用量（后台仪表盘卡片用）。
+// OpencodeUsageToday 从小时聚合桶汇总今日 opencode 上游用量（后台仪表盘卡片用）。
 func OpencodeUsageToday() map[string]any {
-	today := time.Now().Format("2006-01-02")
-	var requests int64
-	var input, output, total int64
-	for _, e := range reqlog.Filter(func(e types.RequestLog) bool {
-		return e.Upstream == UpstreamOpenCode && e.StartedAt.Format("2006-01-02") == today
-	}) {
-		requests++
-		input += e.InputTokens
-		output += e.OutputTokens
-		total += e.TotalTokens
-	}
+	now := time.Now()
+	from := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	t := reqlog.SumUpstream(from, now.Add(time.Minute), UpstreamOpenCode)
 	return map[string]any{
-		"requests":     requests,
-		"inputTokens":  input,
-		"outputTokens": output,
-		"totalTokens":  total,
+		"requests":     t.Requests,
+		"inputTokens":  t.InputTokens,
+		"outputTokens": t.OutputTokens,
+		"totalTokens":  t.TotalTokens,
 	}
 }
 

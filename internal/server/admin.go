@@ -18,9 +18,10 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
+	"sync"
 )
 
 // In-memory OAuth login state for async browser login
@@ -1333,7 +1334,27 @@ func handleAdminRequestLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	cursor := r.URL.Query().Get("cursor")
 
-	page, err := reqlog.ListRequestLogs(limit, cursor)
+	// 筛选参数（M3）：model / upstream / key / status / q / from / to
+	q := r.URL.Query()
+	filter := &reqlog.LogFilter{
+		Model:    q.Get("model"),
+		Upstream: q.Get("upstream"),
+		Key:      q.Get("key"),
+		Status:   q.Get("status"),
+		Q:        q.Get("q"),
+	}
+	if v := q.Get("from"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			filter.From = time.Unix(n, 0)
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			filter.To = time.Unix(n, 0)
+		}
+	}
+
+	page, err := reqlog.ListRequestLogs(limit, cursor, filter)
 	if err != nil {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
 		return

@@ -10,7 +10,11 @@ type RequestLog struct {
 	AccountEmail string    `json:"accountEmail"`
 	Protocol     string    `json:"protocol"`
 	// Upstream 标记上游来源："cline"=Cline 账号池，"opencode"=opencode zen 免费模型
-	Upstream       string  `json:"upstream,omitempty"`
+	Upstream string `json:"upstream,omitempty"`
+	// APIKeyID 记录请求使用的客户端 API Key（未配置鉴权时为空）
+	APIKeyID string `json:"apiKeyId,omitempty"`
+	// ProviderID 记录请求命中的自定义提供商（未走提供商时为空）
+	ProviderID     string  `json:"providerId,omitempty"`
 	Model          string  `json:"model"`
 	Stream         bool    `json:"stream"`
 	InputTokens    int64   `json:"inputTokens"`
@@ -23,6 +27,8 @@ type RequestLog struct {
 	OutputTPS      float64 `json:"outputTokensPerSecond"`
 	Completed      bool    `json:"completed"`
 	Error          string  `json:"error,omitempty"`
+	// ErrorClass 是错误的粗分类（rate_limit/auth/timeout/network/upstream/client/other），供统计聚合
+	ErrorClass string `json:"errorClass,omitempty"`
 }
 
 // TokenUsage 是从上游响应解析出的单次请求 token 用量。

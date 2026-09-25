@@ -23,7 +23,11 @@ func TestMain(m *testing.M) {
 	}
 	oldPoolPath := pool.Path
 	pool.Path = filepath.Join(tmp, ".cline-accounts.json")
-	restoreLogsPath := reqlog.SetPathForTest(filepath.Join(tmp, ".cline-request-logs.json"))
+	memStore, memErr := reqlog.NewMemoryStore()
+	if memErr != nil {
+		panic(memErr)
+	}
+	restoreLogsPath := reqlog.SetStoreForTest(memStore)
 
 	pool.Mu.Lock()
 	pool.State = nil // 强制从临时路径重新加载

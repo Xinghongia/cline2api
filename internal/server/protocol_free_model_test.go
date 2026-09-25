@@ -13,7 +13,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -189,20 +188,12 @@ func TestOpenAIResponsesFreeFallsBackToDSAndPreservesResponseFormat(t *testing.T
 	oldPool := pool.State
 	oldConfig := proxyconfig.Get()
 	oldTransport := httpx.Client.Transport
-	logPath := reqlog.Path()
-	oldLogData, oldLogErr := os.ReadFile(logPath)
 	restoreLogs := reqlog.SwapForTest(nil)
-	_ = os.Remove(logPath)
 	t.Cleanup(func() {
 		pool.State = oldPool
 		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
 		restoreLogs()
-		if oldLogErr != nil {
-			_ = os.Remove(logPath)
-		} else {
-			_ = os.WriteFile(logPath, oldLogData, 0600)
-		}
 	})
 
 	first := &types.Account{

@@ -236,7 +236,7 @@ func isFreeModelEntry(m types.Model) bool {
 
 func StartProxy(host string, port int) error {
 	p := pool.Load()
-	reqlog.LoadRequestLogs()
+	// 用量存储为 SQLite（reqlog.G 懒初始化），无需加载 JSON
 	activeCount := 0
 	for _, a := range p.Accounts {
 		if a.Status == "active" {
