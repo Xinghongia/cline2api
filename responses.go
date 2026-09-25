@@ -5,6 +5,7 @@ import (
 	"cline-go-proxy/internal/chatmsg"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
+	"cline-go-proxy/internal/zen"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -323,7 +324,7 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, reqLo
 						}
 						usage := types.ParseTokenUsage(obj["usage"])
 						if usage.Valid {
-							latestUsage = mergeTokenUsage(latestUsage, usage)
+							latestUsage = types.MergeTokenUsage(latestUsage, usage)
 						}
 						delta := getNested(obj, "choices", 0, "delta")
 						if delta == nil {
@@ -490,7 +491,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		chat["messages"] = chatmsg.SanitizeMessages(msgs)
 	}
 	chatModel, _ := chat["model"].(string)
-	route := routeModel(chatModel)
+	route := zen.RouteModel(chatModel)
 
 	switch route {
 	case "reject":
@@ -503,18 +504,18 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case "zen":
-		reqLog.Upstream = upstreamOpenCode
-		zm, _ := resolveZenInfo(chatModel)
-		out := maybeCompact(chat, zm, requestSessionID(chat, r.Header))
-		if out.changed {
-			log.Printf("  responses %s", out.note)
+		reqLog.Upstream = zen.UpstreamOpenCode
+		zm, _ := zen.ResolveZenInfo(chatModel)
+		out := zen.MaybeCompact(chat, zm, zen.RequestSessionID(chat, r.Header))
+		if out.Changed {
+			log.Printf("  responses %s", out.Note)
 		}
-		upResp, err := callZenAPI(chat, isStream)
+		upResp, err := zen.CallZenAPI(chat, isStream)
 		if err != nil {
-			if fbResp, fbAcc, fbErr, attempted := zenFailoverToCline(chat, isStream); attempted {
+			if fbResp, fbAcc, fbErr, attempted := ZenFailoverToCline(chat, isStream); attempted {
 				if fbErr == nil {
 					log.Printf("  responses failover: serving %q via cline pool", chatModel)
-					reqLog.Upstream = upstreamCline
+					reqLog.Upstream = zen.UpstreamCline
 					if fm, ok := chat["model"].(string); ok && fm != "" {
 						reqLog.Model = fm // zen 故障转移后记录实际服务模型
 					}
@@ -577,12 +578,12 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, chatToResponses(out2))
 
 	default: // cline
-		reqLog.Upstream = upstreamCline
+		reqLog.Upstream = zen.UpstreamCline
 		upResp, acc, err := callClineAPI(chat, isStream)
 		if effectiveModel, ok := chat["model"].(string); ok && effectiveModel != "" {
 			reqLog.Model = effectiveModel // 含回退后的实际服务模型
-			if _, isZen := resolveZenInfo(effectiveModel); isZen {
-				reqLog.Upstream = upstreamOpenCode // zen 反向故障转移后归因 opencode
+			if _, isZen := zen.ResolveZenInfo(effectiveModel); isZen {
+				reqLog.Upstream = zen.UpstreamOpenCode // zen 反向故障转移后归因 opencode
 			}
 		}
 		if err != nil {

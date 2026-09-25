@@ -1,4 +1,4 @@
-package main
+package zen
 
 import (
 	"cline-go-proxy/internal/httpx"
@@ -106,7 +106,7 @@ func zenDialContext(ctx context.Context, network, addr string) (net.Conn, error)
 // pickZenProxy 按策略选代理，返回 (代理URL, 索引)；未配置返回 ("", -1)。
 // 冷却中的代理线性探测跳过；轮询计数与日志索引保持一致。
 func pickZenProxy() (string, int) {
-	cfg := getZenConfig()
+	cfg := GetZenConfig()
 	n := len(cfg.Proxies)
 	if n == 0 {
 		return "", -1
@@ -133,7 +133,7 @@ func lastZenProxyIdx() int {
 	if v <= 0 {
 		return -1
 	}
-	n := len(getZenConfig().Proxies)
+	n := len(GetZenConfig().Proxies)
 	if n == 0 {
 		n = 1
 	}
@@ -167,9 +167,9 @@ func zenProxyAvailable(idx int) bool {
 	return false
 }
 
-// zenProxyCooldownStatus 供管理后台展示：代理 URL → 冷却截止时刻。
-func zenProxyCooldownStatus() map[string]string {
-	cfg := getZenConfig()
+// ZenProxyCooldownStatus 供管理后台展示：代理 URL → 冷却截止时刻。
+func ZenProxyCooldownStatus() map[string]string {
+	cfg := GetZenConfig()
 	zenProxyCooldownsMu.Lock()
 	defer zenProxyCooldownsMu.Unlock()
 	out := map[string]string{}
@@ -181,7 +181,7 @@ func zenProxyCooldownStatus() map[string]string {
 	return out
 }
 
-func maskProxyURL(raw string) string {
+func MaskProxyURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.User == nil {
 		return raw

@@ -1,4 +1,4 @@
-package main
+package zen
 
 import (
 	"cline-go-proxy/internal/types"
@@ -69,8 +69,8 @@ var (
 	compactStatesMu sync.Mutex
 )
 
-// startCompactCleanup 定期清理 24 小时未更新的会话压缩状态。
-func startCompactCleanup() {
+// StartCompactCleanup 定期清理 24 小时未更新的会话压缩状态。
+func StartCompactCleanup() {
 	go func() {
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
@@ -234,7 +234,7 @@ func generateSummary(modelID, prompt string, maxSummary int) (string, error) {
 		"messages":   []any{map[string]any{"role": "user", "content": prompt}},
 		"max_tokens": maxSummary,
 	}
-	resp, err := callZenAPI(body, false)
+	resp, err := CallZenAPI(body, false)
 	if err != nil {
 		return "", err
 	}
@@ -274,8 +274,8 @@ func estimateJSON(v any) int {
 	return len(b) / 4
 }
 
-// requestSessionID 会话标识：优先 x-opencode-session 头，其次 body.session_id。
-func requestSessionID(params map[string]any, hdr http.Header) string {
+// RequestSessionID 会话标识：优先 x-opencode-session 头，其次 body.session_id。
+func RequestSessionID(params map[string]any, hdr http.Header) string {
 	if hdr != nil {
 		if sid := hdr.Get("x-opencode-session"); sid != "" {
 			return sid
@@ -284,17 +284,17 @@ func requestSessionID(params map[string]any, hdr http.Header) string {
 	return strField(params, "session_id")
 }
 
-// compactOutcome 压缩结果描述。
-type compactOutcome struct {
-	changed bool
-	note    string
+// CompactOutcome 压缩结果描述。
+type CompactOutcome struct {
+	Changed bool
+	Note    string
 }
 
-// maybeCompact 估算超限时执行摘要压缩并原地改写 params["messages"]。
-func maybeCompact(params map[string]any, zm types.Model, sessionID string) compactOutcome {
-	cfg := getZenConfig()
+// MaybeCompact 估算超限时执行摘要压缩并原地改写 params["messages"]。
+func MaybeCompact(params map[string]any, zm types.Model, sessionID string) CompactOutcome {
+	cfg := GetZenConfig()
 	if !cfg.Compaction.Auto {
-		return compactOutcome{}
+		return CompactOutcome{}
 	}
 	context := zm.Context
 	if context <= 0 {
@@ -319,12 +319,12 @@ func maybeCompact(params map[string]any, zm types.Model, sessionID string) compa
 	}
 	threshold := context - output
 	if estimateJSON(params) <= threshold {
-		return compactOutcome{}
+		return CompactOutcome{}
 	}
 
 	messages, _ := params["messages"].([]any)
 	if len(messages) == 0 {
-		return compactOutcome{}
+		return CompactOutcome{}
 	}
 
 	serialized := make([]string, 0, len(messages))
@@ -336,7 +336,7 @@ func maybeCompact(params map[string]any, zm types.Model, sessionID string) compa
 
 	sel := selectRecent(serialized, keep)
 	if sel == nil || sel.split <= 0 {
-		return compactOutcome{}
+		return CompactOutcome{}
 	}
 
 	previousSummary := loadCompactState(sessionID).summary
@@ -354,7 +354,7 @@ func maybeCompact(params map[string]any, zm types.Model, sessionID string) compa
 		contextParts = append(contextParts, head)
 	}
 	if previousSummary == "" && head == "" && st.recent == "" {
-		return compactOutcome{}
+		return CompactOutcome{}
 	}
 	prompt := buildSummaryPrompt(previousSummary, contextParts)
 
@@ -384,9 +384,9 @@ func maybeCompact(params map[string]any, zm types.Model, sessionID string) compa
 
 	updateCompactState(sessionID, summary, strings.Join(sel.recent, "\n\n"))
 	params["messages"] = newMsgs
-	return compactOutcome{
-		changed: true,
-		note:    fmt.Sprintf("[compacted via summary] summary_model=%s kept=%d msgs", summaryModel, len(messages)-sel.split),
+	return CompactOutcome{
+		Changed: true,
+		Note:    fmt.Sprintf("[compacted via summary] summary_model=%s kept=%d msgs", summaryModel, len(messages)-sel.split),
 	}
 }
 
@@ -435,10 +435,10 @@ func findExistingSummary(messages []any, upTo int) string {
 }
 
 // fallbackTruncate 摘要失败时退回尾部截断：保留 system + 尾部消息至 60% 预算。
-func fallbackTruncate(params map[string]any, zm types.Model) compactOutcome {
+func fallbackTruncate(params map[string]any, zm types.Model) CompactOutcome {
 	messages, _ := params["messages"].([]any)
 	if len(messages) == 0 {
-		return compactOutcome{}
+		return CompactOutcome{}
 	}
 	ctxBudget := zm.Context
 	if ctxBudget <= 0 {
@@ -493,5 +493,5 @@ func fallbackTruncate(params map[string]any, zm types.Model) compactOutcome {
 		out = append(out, k.msg)
 	}
 	params["messages"] = out
-	return compactOutcome{changed: true, note: "[compacted via truncation]"}
+	return CompactOutcome{Changed: true, Note: "[compacted via truncation]"}
 }

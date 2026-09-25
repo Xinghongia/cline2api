@@ -7,6 +7,7 @@ import (
 	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
+	"cline-go-proxy/internal/zen"
 	"context"
 	"encoding/json"
 	"io"
@@ -35,10 +36,7 @@ func protocolTestServer(t *testing.T) string {
 		cline.MarkModelSyncRanForTest()
 	})
 
-	zenConfigMu.Lock()
-	oldZenConfig := zenConfig
-	zenConfig = &zenConfigData{BaseURL: zenAPIBase, Key: "public"}
-	zenConfigMu.Unlock()
+	restoreZenConfig := zen.SwapConfigForTest(&zen.ZenConfigData{BaseURL: zen.ZenAPIBase, Key: "public"})
 
 	oldServerMux := serverMux
 	serverMu.Lock()
@@ -55,9 +53,7 @@ func protocolTestServer(t *testing.T) string {
 			cancel()
 		}
 		serverMux = oldServerMux
-		zenConfigMu.Lock()
-		zenConfig = oldZenConfig
-		zenConfigMu.Unlock()
+		restoreZenConfig()
 	})
 
 	serverErr := make(chan error, 1)

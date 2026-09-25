@@ -8,6 +8,7 @@ import (
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
+	"cline-go-proxy/internal/zen"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -918,7 +919,7 @@ func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 		"strategy":     cfg.Strategy,
 		"modelChain":   cfg.ModelChain,
 		"version":      appVersion,
-		"zenHeaders":   getZenConfig().ZenHeaders,
+		"zenHeaders":   zen.GetZenConfig().ZenHeaders,
 		"pool.Path":    pool.Path,
 		"defaultModel": getDefaultModel(),
 		"headers":      cfg.Headers,
@@ -1077,7 +1078,7 @@ func handleAdminModels(w http.ResponseWriter, r *http.Request) {
 	models := getAllModels()
 	// zen 模型计费归一化：与路由判定保持一致（种子白名单兜底），避免 UI 分组与分流不一致
 	for i := range models {
-		if isZenSource(models[i]) && isZenFreeModel(models[i]) && models[i].Cost != "free" {
+		if zen.IsZenSource(models[i]) && zen.IsZenFreeModel(models[i]) && models[i].Cost != "free" {
 			models[i].Cost = "free"
 		}
 	}
@@ -1212,7 +1213,7 @@ func handleAdminModelDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /admin/api/models/context  body: { id, context, output }
-// 手动设置模型的上下文窗口 / 最大输出 token（压缩阈值与 maybeCompact 按此计算）。
+// 手动设置模型的上下文窗口 / 最大输出 token（压缩阈值与 zen.MaybeCompact 按此计算）。
 // 0 = 清除为未知（zen 同步会回填默认值）。设置后 zen 模型同步保留该值不再覆盖。
 func handleAdminModelContext(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -1309,7 +1310,7 @@ func handleAdminStats(w http.ResponseWriter, r *http.Request) {
 			"modelChain":       proxyconfig.Get().ModelChain,
 			"version":          appVersion,
 			// opencode zen 免费模型今日用量（从请求日志聚合）
-			"opencodeToday": opencodeUsageToday(),
+			"opencodeToday": zen.OpencodeUsageToday(),
 		},
 	})
 }
@@ -1346,10 +1347,10 @@ func handleOpenCodeConfig(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	cfg := getZenConfig()
+	cfg := zen.GetZenConfig()
 	maskedProxies := make([]string, 0, len(cfg.Proxies))
 	for _, p := range cfg.Proxies {
-		maskedProxies = append(maskedProxies, maskProxyURL(p))
+		maskedProxies = append(maskedProxies, zen.MaskProxyURL(p))
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
 		"enabled":         cfg.Enabled,
@@ -1357,7 +1358,7 @@ func handleOpenCodeConfig(w http.ResponseWriter, r *http.Request) {
 		"baseURL":         cfg.BaseURL,
 		"proxies":         maskedProxies,
 		"proxyStrategy":   cfg.ProxyStrategy,
-		"proxyCooldowns":  zenProxyCooldownStatus(),
+		"proxyCooldowns":  zen.ZenProxyCooldownStatus(),
 		"maxConcurrency":  cfg.MaxConcurrency,
 		"retries":         cfg.Retries,
 		"failover":        cfg.Failover,
@@ -1365,10 +1366,10 @@ func handleOpenCodeConfig(w http.ResponseWriter, r *http.Request) {
 		"failoverMinutes": cfg.FailoverMinutes,
 		"compaction":      cfg.Compaction,
 		"runtime": map[string]any{
-			"failoverActive": zenFailedNow(),
+			"failoverActive": zen.ZenFailedNow(),
 		},
-		"syncedModels": len(currentZenModels()),
-		"lastSync":     lastZenModelSync(),
+		"syncedModels": len(zen.CurrentZenModels()),
+		"lastSync":     zen.LastZenModelSync(),
 	}})
 }
 
@@ -1386,25 +1387,25 @@ func handleOpenCodeConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	var req struct {
-		Enabled         *bool              `json:"enabled"`
-		Key             *string            `json:"key"`
-		BaseURL         *string            `json:"baseURL"`
-		Proxies         []string           `json:"proxies"`
-		ProxyStrategy   *string            `json:"proxyStrategy"`
-		MaxConcurrency  *int               `json:"maxConcurrency"`
-		Retries         *int               `json:"retries"`
-		Failover        *bool              `json:"failover"`
-		FailoverCount   *int               `json:"failoverCount"`
-		FailoverMinutes *int               `json:"failoverMinutes"`
-		ZenHeaders      *map[string]string `json:"zenHeaders"`
-		Compaction      *zenCompactConfig  `json:"compaction"`
+		Enabled         *bool                 `json:"enabled"`
+		Key             *string               `json:"key"`
+		BaseURL         *string               `json:"baseURL"`
+		Proxies         []string              `json:"proxies"`
+		ProxyStrategy   *string               `json:"proxyStrategy"`
+		MaxConcurrency  *int                  `json:"maxConcurrency"`
+		Retries         *int                  `json:"retries"`
+		Failover        *bool                 `json:"failover"`
+		FailoverCount   *int                  `json:"failoverCount"`
+		FailoverMinutes *int                  `json:"failoverMinutes"`
+		ZenHeaders      *map[string]string    `json:"zenHeaders"`
+		Compaction      *zen.ZenCompactConfig `json:"compaction"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_json")})
 		return
 	}
 
-	cfg := getZenConfig()
+	cfg := zen.GetZenConfig()
 	if req.Enabled != nil {
 		cfg.Enabled = *req.Enabled
 	}
@@ -1420,7 +1421,7 @@ func handleOpenCodeConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		cfg.BaseURL = u
 	}
 	if req.Proxies != nil {
-		if err := validateProxyList(req.Proxies); err != nil {
+		if err := zen.ValidateProxyList(req.Proxies); err != nil {
 			writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
 			return
 		}
@@ -1496,7 +1497,7 @@ func handleOpenCodeConfigUpdate(w http.ResponseWriter, r *http.Request) {
 		cfg.Compaction.MaxSummary = c.MaxSummary
 	}
 
-	setZenConfig(cfg)
+	zen.SetZenConfig(cfg)
 	log.Printf("admin: opencode config updated (enabled=%v)", cfg.Enabled)
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "opencode_config_saved")})
 }
@@ -1510,7 +1511,7 @@ func handleClineProxyConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := cline.GetClineProxyConfig()
 	maskedProxies := make([]string, 0, len(cfg.Proxies))
 	for _, p := range cfg.Proxies {
-		maskedProxies = append(maskedProxies, maskProxyURL(p))
+		maskedProxies = append(maskedProxies, zen.MaskProxyURL(p))
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
 		"proxies":       maskedProxies,
@@ -1541,7 +1542,7 @@ func handleClineProxyConfigUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Proxies != nil {
-		if err := validateProxyList(req.Proxies); err != nil {
+		if err := zen.ValidateProxyList(req.Proxies); err != nil {
 			writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
 			return
 		}
@@ -1578,8 +1579,8 @@ func handleOpenCodeModelSync(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	res := syncZenModels()
-	setLastZenModelSync(res)
+	res := zen.SyncZenModels()
+	zen.SetLastZenModelSync(res)
 	if res.Error != "" {
 		writeAPI(w, http.StatusBadGateway, apiResponse{Success: false, Error: res.Error, Message: tAPI(r, "model_sync_failed")})
 		return

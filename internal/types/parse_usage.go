@@ -67,3 +67,28 @@ func ParseTokenUsage(value any) TokenUsage {
 	}
 	return TokenUsage{Prompt: prompt, Completion: completion, Total: total, Cached: cached, Valid: hasUsage}
 }
+
+// MergeTokenUsage 合并流式响应中多次出现的 usage 快照：
+// 后到的非零字段覆盖旧值（最终 chunk 为准），Total 缺失时用 In+Out 补齐。
+func MergeTokenUsage(current, next TokenUsage) TokenUsage {
+	if !next.Valid {
+		return current
+	}
+	if next.Prompt != 0 {
+		current.Prompt = next.Prompt
+	}
+	if next.Completion != 0 {
+		current.Completion = next.Completion
+	}
+	if next.Total != 0 {
+		current.Total = next.Total
+	}
+	if next.Cached != 0 {
+		current.Cached = next.Cached
+	}
+	current.Valid = current.Valid || next.Valid
+	if current.Total == 0 && (current.Prompt != 0 || current.Completion != 0) {
+		current.Total = current.Prompt + current.Completion
+	}
+	return current
+}

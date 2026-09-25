@@ -53,7 +53,7 @@ func TestParseTokenUsageTracksAnthropicCachedTokens(t *testing.T) {
 }
 
 func TestMergeTokenUsagePreservesStreamFields(t *testing.T) {
-	merged := mergeTokenUsage(
+	merged := types.MergeTokenUsage(
 		types.TokenUsage{Prompt: 100, Cached: 70, Valid: true},
 		types.TokenUsage{Completion: 20, Total: 120, Valid: true},
 	)

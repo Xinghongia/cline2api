@@ -12,6 +12,7 @@ import (
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
+	"cline-go-proxy/internal/zen"
 	"context"
 	"encoding/json"
 	"errors"
@@ -64,29 +65,29 @@ func getAllModels() []types.Model {
 
 	var custom []types.Model
 	var remote []types.Model
-	var zen []types.Model
+	var zenList []types.Model
 	for _, m := range p.Models {
 		switch m.Source {
 		case "remote":
 			remote = append(remote, m)
 		case "zen":
-			zen = append(zen, m)
+			zenList = append(zenList, m)
 		default:
 			custom = append(custom, m)
 		}
 	}
 
-	if len(remote) > 0 || len(zen) > 0 || remoteZenActive() {
-		result := make([]types.Model, 0, len(remote)+len(zen)+len(custom))
+	if len(remote) > 0 || len(zenList) > 0 || zen.RemoteZenActive() {
+		result := make([]types.Model, 0, len(remote)+len(zenList)+len(custom))
 		result = append(result, remote...)
-		result = append(result, zen...)
+		result = append(result, zenList...)
 		result = append(result, custom...)
 		return result
 	}
 
-	builtin := make([]types.Model, 0, len(builtinModels)+len(zenSeedModels))
+	builtin := make([]types.Model, 0, len(builtinModels)+len(zen.ZenSeedModels))
 	builtin = append(builtin, builtinModels...)
-	builtin = append(builtin, builtinZenModels()...)
+	builtin = append(builtin, zen.BuiltinZenModels()...)
 
 	result := make([]types.Model, 0, len(builtin)+len(custom))
 	result = append(result, builtin...)
@@ -230,7 +231,7 @@ func isFreeModelEntry(m types.Model) bool {
 	if m.Cost == "free" {
 		return true
 	}
-	return isZenSource(m) && isZenFreeModel(m)
+	return zen.IsZenSource(m) && zen.IsZenFreeModel(m)
 }
 
 func startProxy(host string, port int) error {
@@ -255,10 +256,10 @@ func startProxy(host string, port int) error {
 	cline.StartModelSync()
 
 	// opencode zen：定时同步免费模型列表 + 压缩会话状态清理
-	if getZenConfig().Enabled {
-		startZenModelsRefresher()
+	if zen.GetZenConfig().Enabled {
+		zen.StartZenModelsRefresher()
 	}
-	startCompactCleanup()
+	zen.StartCompactCleanup()
 
 	freePort(port)
 
@@ -398,7 +399,7 @@ func startProxy(host string, port int) error {
 		}
 
 		// 按 model 自动分流：zen 免费模型 / zen 付费拒绝 / 其余走 Cline 池
-		switch routeModel(model) {
+		switch zen.RouteModel(model) {
 		case "reject":
 			msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", model)
 			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
@@ -407,18 +408,18 @@ func startProxy(host string, port int) error {
 			})
 			return
 		case "zen":
-			reqLog.Upstream = upstreamOpenCode
-			zm, _ := resolveZenInfo(model)
-			out := maybeCompact(params, zm, requestSessionID(params, r.Header))
-			if out.changed {
-				log.Printf("  chat %s", out.note)
+			reqLog.Upstream = zen.UpstreamOpenCode
+			zm, _ := zen.ResolveZenInfo(model)
+			out := zen.MaybeCompact(params, zm, zen.RequestSessionID(params, r.Header))
+			if out.Changed {
+				log.Printf("  chat %s", out.Note)
 			}
-			resp, err := callZenAPI(params, isStream)
+			resp, err := zen.CallZenAPI(params, isStream)
 			if err != nil {
-				if fbResp, fbAcc, fbErr, attempted := zenFailoverToCline(params, isStream); attempted {
+				if fbResp, fbAcc, fbErr, attempted := ZenFailoverToCline(params, isStream); attempted {
 					if fbErr == nil {
 						log.Printf("  chat failover: serving %q via cline pool", model)
-						reqLog.Upstream = upstreamCline
+						reqLog.Upstream = zen.UpstreamCline
 						if fbAcc != nil {
 							reqLog.AccountID = fbAcc.AccountID
 							reqLog.AccountEmail = fbAcc.Email
@@ -463,8 +464,8 @@ func startProxy(host string, port int) error {
 		resp, acc, err := callClineAPI(params, isStream)
 		if effectiveModel, ok := params["model"].(string); ok && effectiveModel != "" {
 			reqLog.Model = effectiveModel // 含回退后的实际服务模型
-			if _, isZen := resolveZenInfo(effectiveModel); isZen {
-				reqLog.Upstream = upstreamOpenCode // zen 反向故障转移后归因 opencode
+			if _, isZen := zen.ResolveZenInfo(effectiveModel); isZen {
+				reqLog.Upstream = zen.UpstreamOpenCode // zen 反向故障转移后归因 opencode
 			}
 		}
 		if err != nil {
@@ -475,7 +476,7 @@ func startProxy(host string, port int) error {
 			})
 			return
 		}
-		reqLog.Upstream = upstreamCline
+		reqLog.Upstream = zen.UpstreamCline
 		defer resp.Body.Close()
 		if acc != nil {
 			reqLog.AccountID = acc.AccountID
@@ -546,7 +547,7 @@ func startProxy(host string, port int) error {
 	fmt.Println("  API Key: any value")
 	fmt.Printf("  Model:   %s\n", getDefaultModel())
 	fmt.Printf("  Accounts: %d total, %d active\n", len(pool.Load().Accounts), activeCount)
-	if zc := getZenConfig(); zc.Enabled {
+	if zc := zen.GetZenConfig(); zc.Enabled {
 		fmt.Printf("  OpenCode: enabled (%s free models)\n", strings.TrimRight(zc.BaseURL, "/"))
 	} else {
 		fmt.Println("  OpenCode: disabled")
@@ -696,7 +697,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *types.Ac
 		resp, acc, err := callFreeClineAPI(params, stream)
 		if err != nil {
 			// Cline 残血池整条链耗尽（429 冷却/无账号）→ 落到 zen 免费模型
-			if fbResp, attempted := clineFailoverToZen(params, stream); attempted {
+			if fbResp, attempted := ClineFailoverToZen(params, stream); attempted {
 				return fbResp, nil, nil
 			}
 		}
@@ -705,7 +706,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *types.Ac
 	// zen 免费模型进入 cline 池仅发生在 zen 故障转移期间：改写成 cline 侧可用的
 	// free 模型链，否则 Cline 上游会报 "invalid model format. Expected format:
 	// modelType/model"（zen 的裸模型 ID 不符合 Cline 的 provider/model 格式）。
-	if zm, ok := resolveZenInfo(model); ok && isZenFreeModel(zm) {
+	if zm, ok := zen.ResolveZenInfo(model); ok && zen.IsZenFreeModel(zm) {
 		log.Printf("  zen failover: rewriting zen model %q to cline free chain", model)
 		return callFreeClineAPI(params, stream)
 	}
@@ -784,7 +785,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *types.Ac
 		}
 	}
 	// Cline 侧（含 free 链）全部耗尽 → 反向故障转移到 zen 免费模型
-	if fbResp, attempted := clineFailoverToZen(params, stream); attempted {
+	if fbResp, attempted := ClineFailoverToZen(params, stream); attempted {
 		return fbResp, nil, nil
 	}
 	if hasActiveAccounts() {
@@ -1158,29 +1159,6 @@ func testAccount(acc *types.Account) accountTestResult {
 	return result
 }
 
-func mergeTokenUsage(current, next types.TokenUsage) types.TokenUsage {
-	if !next.Valid {
-		return current
-	}
-	if next.Prompt != 0 {
-		current.Prompt = next.Prompt
-	}
-	if next.Completion != 0 {
-		current.Completion = next.Completion
-	}
-	if next.Total != 0 {
-		current.Total = next.Total
-	}
-	if next.Cached != 0 {
-		current.Cached = next.Cached
-	}
-	current.Valid = current.Valid || next.Valid
-	if current.Total == 0 && (current.Prompt != 0 || current.Completion != 0) {
-		current.Total = current.Prompt + current.Completion
-	}
-	return current
-}
-
 func recordTokenUsage(acc *types.Account, model string, usage types.TokenUsage) {
 	if acc == nil || !usage.Valid {
 		return
@@ -1334,7 +1312,7 @@ func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *t
 				}
 				normalized := normalizeOpenAIResponse(obj)
 				if usage := types.ParseTokenUsage(normalized["usage"]); usage.Valid {
-					latestUsage = mergeTokenUsage(latestUsage, usage)
+					latestUsage = types.MergeTokenUsage(latestUsage, usage)
 				}
 				if firstOutputAt.IsZero() && hasFirstOutput(normalized) {
 					firstOutputAt = time.Now()
@@ -1760,12 +1738,12 @@ func openAIToAnthropic(openAI map[string]any) map[string]any {
 	return out
 }
 
-// zenFailoverToCline zen 调用失败后的透明降级：改走 cline 账号池 free 模型链。
+// ZenFailoverToCline zen 调用失败后的透明降级：改走 cline 账号池 free 模型链。
 // attempted=false 表示未启用故障转移，调用方维持原错误路径。
-// 注意：失败计数由 callZenAPI 内部标记（每请求恰好一次），此处不再重复计数，
+// 注意：失败计数由 zen.CallZenAPI 内部标记（每请求恰好一次），此处不再重复计数，
 // 否则限流/服务错误路径 + 此处各计一次，故障转移会被过早触发。
-func zenFailoverToCline(params map[string]any, stream bool) (*http.Response, *types.Account, error, bool) {
-	cfg := getZenConfig()
+func ZenFailoverToCline(params map[string]any, stream bool) (*http.Response, *types.Account, error, bool) {
+	cfg := zen.GetZenConfig()
 	if !cfg.Failover {
 		return nil, nil, nil, false
 	}
@@ -1776,19 +1754,19 @@ func zenFailoverToCline(params map[string]any, stream bool) (*http.Response, *ty
 	return resp, acc, err, true
 }
 
-// clineFailoverToZen Cline 侧（含 free 池链）全部耗尽后的反向故障转移：
-// 落到 opencode zen 免费模型。与 zenFailoverToCline 方向相反，形成双向闭环——
+// ClineFailoverToZen Cline 侧（含 free 池链）全部耗尽后的反向故障转移：
+// 落到 opencode zen 免费模型。与 ZenFailoverToCline 方向相反，形成双向闭环——
 // 任一免费上游挂掉，流量自动落到另一条。zen 未启用或处于故障转移窗口
 // （连续失败被判定不可达）时不尝试；最多试 3 个免费模型，避免在坏模型上反复烧时间。
-func clineFailoverToZen(params map[string]any, stream bool) (*http.Response, bool) {
-	cfg := getZenConfig()
-	if !cfg.Enabled || zenFailedNow() {
+func ClineFailoverToZen(params map[string]any, stream bool) (*http.Response, bool) {
+	cfg := zen.GetZenConfig()
+	if !cfg.Enabled || zen.ZenFailedNow() {
 		return nil, false
 	}
 	orig, _ := params["model"].(string)
 	attempts := 0
-	for _, m := range currentZenModels() {
-		if !isZenFreeModel(m) || m.ID == orig {
+	for _, m := range zen.CurrentZenModels() {
+		if !zen.IsZenFreeModel(m) || m.ID == orig {
 			continue
 		}
 		attempts++
@@ -1797,7 +1775,7 @@ func clineFailoverToZen(params map[string]any, stream bool) (*http.Response, boo
 		}
 		log.Printf("  cline failover: %q exhausted, trying zen free model %q", orig, m.ID)
 		params["model"] = m.ID
-		resp, err := callZenAPI(params, stream)
+		resp, err := zen.CallZenAPI(params, stream)
 		if err == nil {
 			return resp, true
 		}
@@ -1841,7 +1819,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "anthropic", Model: req.Model, Stream: req.Stream}
 
 	// 按 model 自动分流（与 chat 端点一致）：zen 免费/付费拒绝/Cline 池
-	switch routeModel(req.Model) {
+	switch zen.RouteModel(req.Model) {
 	case "reject":
 		msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", req.Model)
 		reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
@@ -1850,18 +1828,18 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case "zen":
-		reqLog.Upstream = upstreamOpenCode
-		zm, _ := resolveZenInfo(req.Model)
-		out := maybeCompact(openAIReq, zm, requestSessionID(map[string]any{"session_id": r.Header.Get("x-opencode-session")}, nil))
-		if out.changed {
-			log.Printf("  anthropic %s", out.note)
+		reqLog.Upstream = zen.UpstreamOpenCode
+		zm, _ := zen.ResolveZenInfo(req.Model)
+		out := zen.MaybeCompact(openAIReq, zm, zen.RequestSessionID(map[string]any{"session_id": r.Header.Get("x-opencode-session")}, nil))
+		if out.Changed {
+			log.Printf("  anthropic %s", out.Note)
 		}
-		resp, err := callZenAPI(openAIReq, req.Stream)
+		resp, err := zen.CallZenAPI(openAIReq, req.Stream)
 		if err != nil {
-			if fbResp, fbAcc, fbErr, attempted := zenFailoverToCline(openAIReq, req.Stream); attempted {
+			if fbResp, fbAcc, fbErr, attempted := ZenFailoverToCline(openAIReq, req.Stream); attempted {
 				if fbErr == nil {
 					log.Printf("  anthropic failover: serving %q via cline pool", req.Model)
-					reqLog.Upstream = upstreamCline
+					reqLog.Upstream = zen.UpstreamCline
 					if fm, ok := openAIReq["model"].(string); ok && fm != "" {
 						reqLog.Model = fm // zen 故障转移后记录实际服务模型
 					}
@@ -1947,8 +1925,8 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	resp, acc, err := callClineAPI(openAIReq, req.Stream)
 	if effectiveModel, ok := openAIReq["model"].(string); ok && effectiveModel != "" {
 		reqLog.Model = effectiveModel // 含回退后的实际服务模型
-		if _, isZen := resolveZenInfo(effectiveModel); isZen {
-			reqLog.Upstream = upstreamOpenCode // zen 反向故障转移后归因 opencode
+		if _, isZen := zen.ResolveZenInfo(effectiveModel); isZen {
+			reqLog.Upstream = zen.UpstreamOpenCode // zen 反向故障转移后归因 opencode
 		}
 	}
 	if err != nil {
@@ -1959,7 +1937,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	reqLog.Upstream = upstreamCline
+	reqLog.Upstream = zen.UpstreamCline
 	defer resp.Body.Close()
 	if acc != nil {
 		reqLog.AccountID = acc.AccountID
@@ -2096,7 +2074,7 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *
 			}
 		}
 		if usage := types.ParseTokenUsage(obj["usage"]); usage.Valid {
-			latestUsage = mergeTokenUsage(latestUsage, usage)
+			latestUsage = types.MergeTokenUsage(latestUsage, usage)
 		}
 		if firstOutputAt.IsZero() && hasFirstOutput(obj) {
 			firstOutputAt = time.Now()
@@ -2462,7 +2440,7 @@ func callProvider(p *providers.CustomProvider, params map[string]any, stream boo
 	resp.Body.Close()
 	// 429 / 5xx：该 provider 模型冷却 5 分钟（有 Retry-After 时优先）
 	until := time.Now().Add(5 * time.Minute)
-	if ra := parseRetryAfter(resp.Header.Get("Retry-After")); ra > 0 {
+	if ra := zen.ParseRetryAfter(resp.Header.Get("Retry-After")); ra > 0 {
 		until = time.Now().Add(ra)
 	}
 	providers.SetProviderCooldown(p.ID, fmt.Sprintf("%v", params["model"]), until)
@@ -2504,7 +2482,7 @@ func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response
 			if json.Unmarshal([]byte(payload), &obj) == nil {
 				normalized := normalizeOpenAIResponse(obj)
 				if u := types.ParseTokenUsage(normalized["usage"]); u.Valid {
-					latestUsage = mergeTokenUsage(latestUsage, u)
+					latestUsage = types.MergeTokenUsage(latestUsage, u)
 				}
 				if firstOutputAt.IsZero() && hasFirstOutput(normalized) {
 					firstOutputAt = time.Now()
