@@ -197,7 +197,7 @@ function ClineProxyTab() {
         save.mutate({ proxies: textToLines(values.proxies as string), proxyStrategy: values.proxyStrategy })
       }
     >
-      <p style={{ color: '#999', maxWidth: 720 }}>
+      <p style={{ color: 'var(--ink-2)', maxWidth: 720 }}>
         {t('upstreams.clineProxyIntro',
           '国内直连 api.cline.bot / api.workos.com 会命中跨区限制；配置出口代理池后，所有发往 Cline 的请求（对话、登录刷新、模型同步）经代理轮询出去。优先级：应用内代理 > 环境变量 HTTPS_PROXY > 直连。')}
       </p>

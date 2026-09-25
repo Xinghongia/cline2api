@@ -9,9 +9,9 @@ interface Props {
 
 export default function PageHeader({ title, subtitle, extra }: Props) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 16 }}>
-      <div>
-        <Typography.Title level={4} style={{ marginBottom: subtitle ? 2 : 0 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+      <div style={{ minWidth: 0 }}>
+        <Typography.Title level={3} style={{ marginBottom: subtitle ? 4 : 0, fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
           {title}
         </Typography.Title>
         {subtitle ? <Typography.Text type="secondary">{subtitle}</Typography.Text> : null}

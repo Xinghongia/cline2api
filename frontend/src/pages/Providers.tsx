@@ -249,7 +249,7 @@ function ProviderEditor(props: {
             </>
           )}
         </Form.List>
-        <p style={{ color: '#999', marginTop: 12 }}>
+        <p style={{ color: 'var(--ink-2)', marginTop: 12 }}>
           {formValue?.modelIds?.length ?? 0} {t('providers.modelsCount', '个模型')}
         </p>
       </Form>

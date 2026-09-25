@@ -520,7 +520,7 @@ export default function Accounts() {
                 ]}
               />
             ) : (
-              <span style={{ color: '#999' }}>{t('accounts.noModelStats', '暂无分模型用量')}</span>
+              <span style={{ color: 'var(--ink-2)' }}>{t('accounts.noModelStats', '暂无分模型用量')}</span>
             ),
         }}
       />

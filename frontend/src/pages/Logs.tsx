@@ -222,7 +222,7 @@ export default function Logs() {
               </Button>
             </div>
           ) : items.length > 0 ? (
-            <span style={{ color: '#999' }}>{t('logs.end', '已全部加载')}</span>
+            <span style={{ color: 'var(--ink-2)' }}>{t('logs.end', '已全部加载')}</span>
           ) : null
         }
       />

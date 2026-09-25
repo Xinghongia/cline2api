@@ -1,0 +1,82 @@
+/* Hallmark · genre: atmospheric · macrostructure: Workbench · design-system: design.md · designed-as-app
+ * theme: Midnight Aurora (custom) · theme_axes: dark / grotesk-sans / chromatic-other(紫青极光)
+ */
+:root {
+  /* paper */
+  --paper: oklch(15% 0.015 278);
+  --paper-2: oklch(19% 0.018 278);
+  --paper-3: oklch(23% 0.02 278);
+  /* ink */
+  --ink: oklch(93% 0.008 278);
+  --ink-2: oklch(66% 0.015 278);
+  --ink-3: oklch(52% 0.015 278);
+  /* line */
+  --rule: oklch(29% 0.02 278);
+  --rule-soft: oklch(25% 0.018 278);
+  /* aurora accents */
+  --accent: oklch(71% 0.17 298);
+  --accent-2: oklch(79% 0.13 205);
+  --accent-ink: oklch(15% 0.015 278);
+  --accent-soft: oklch(71% 0.17 298 / 0.14);
+  --accent-border: oklch(71% 0.17 298 / 0.38);
+  /* states */
+  --success: oklch(72% 0.17 155);
+  --warning: oklch(78% 0.15 80);
+  --danger: oklch(64% 0.21 25);
+  --info: oklch(72% 0.13 232);
+
+  /* glass */
+  --glass-bg: oklch(19% 0.018 278 / 0.72);
+  --glow: 0 8px 32px oklch(71% 0.17 298 / 0.13);
+  --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.28);
+
+  /* type */
+  --font-display: 'Space Grotesk Variable', 'Inter Variable', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-body: 'Inter Variable', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'SF Mono', 'Cascadia Code', Consolas, monospace;
+
+  /* space (4pt) */
+  --space-3xs: 4px;
+  --space-2xs: 8px;
+  --space-xs: 12px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+
+  /* radius */
+  --radius-card: 14px;
+  --radius-ctl: 8px;
+  --radius-pill: 999px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 160ms;
+  --dur-med: 240ms;
+
+  /* legacy alias (旧样式兼容) */
+  --c2a-accent: var(--accent);
+  color-scheme: dark;
+}
+
+[data-theme='light'] {
+  --paper: oklch(97.6% 0.005 278);
+  --paper-2: oklch(100% 0 0);
+  --paper-3: oklch(98.2% 0.004 278);
+  --ink: oklch(21% 0.02 278);
+  --ink-2: oklch(46% 0.02 278);
+  --ink-3: oklch(58% 0.018 278);
+  --rule: oklch(91% 0.006 278);
+  --rule-soft: oklch(94% 0.005 278);
+  --accent: oklch(54% 0.2 295);
+  --accent-2: oklch(58% 0.12 210);
+  --accent-soft: oklch(54% 0.2 295 / 0.09);
+  --accent-border: oklch(54% 0.2 295 / 0.35);
+  --success: oklch(54% 0.16 155);
+  --warning: oklch(62% 0.15 75);
+  --danger: oklch(55% 0.21 25);
+  --info: oklch(55% 0.13 232);
+  --glass-bg: oklch(100% 0 0 / 0.78);
+  --glow: 0 8px 28px oklch(54% 0.2 295 / 0.12);
+  --shadow-card: 0 1px 3px oklch(20% 0.02 278 / 0.07);
+  color-scheme: light;
+}

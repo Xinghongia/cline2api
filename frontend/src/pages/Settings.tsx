@@ -129,7 +129,7 @@ export default function Settings() {
               </>
             )}
           </Form.List>
-          <p style={{ color: '#999', marginTop: 8 }}>
+          <p style={{ color: 'var(--ink-2)', marginTop: 8 }}>
             {t('settings.headersHint', '这些请求头会附加到发往 Cline 上游的请求；留空 Value 的行会被忽略。')}
           </p>
         </Card>

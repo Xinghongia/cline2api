@@ -1,0 +1,11 @@
+[
+  {
+    "date": "2026-09-25",
+    "macrostructure": "Workbench",
+    "theme": "Midnight Aurora (custom)",
+    "theme_axes": "dark / grotesk-sans / chromatic-other(紫青极光)",
+    "enrichment": "none (typography + CSS aurora only)",
+    "scope": "app",
+    "brief": "Cline2API 管理后台全站视觉重设计：玻璃侧栏、极光渐变、动效皮肤层"
+  }
+]

@@ -48,3 +48,4 @@ internal/server/dist/*
 
 # 本地参考缓存（opencode2api 参考，非本仓库代码）
 .cache/
+server.log

@@ -178,7 +178,7 @@ export default function Keys() {
           locale={{ emptyText: t('keys.empty', '暂无 API Key —— 未配置任何 Key 时 /v1 端点无需鉴权，建议生成') }}
           columns={columns}
         />
-        <p style={{ color: '#999', marginTop: 12 }}>
+        <p style={{ color: 'var(--ink-2)', marginTop: 12 }}>
           {t('keys.usage', '客户端用法：Header x-api-key 或 Authorization: Bearer <key>；Base URL: http://<host>:3457/v1')}
         </p>
       </Card>

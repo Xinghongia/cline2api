@@ -1,3 +1,8 @@
+/* Hallmark · genre: atmospheric · macrostructure: Workbench · design-system: design.md · designed-as-app
+ * Midnight Aurora —— 全局皮肤层：antd 结构类名只做视觉覆写，不绑版本行为 */
+@import './tokens.css';
+
+/* ---------- 基底 ---------- */
 html,
 body,
 #root {
@@ -6,19 +11,427 @@ body,
 }
 
 body {
+  font-family: var(--font-body);
+  background: var(--paper);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* 极光洗底：两团低透明度光晕 + 细点阵，固定不滚动 */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+body::before {
+  background:
+    radial-gradient(560px 420px at 12% -8%, var(--accent-soft), transparent 68%),
+    radial-gradient(640px 460px at 108% 112%, oklch(79% 0.13 205 / 0.09), transparent 66%);
+}
+[data-theme='light'] body::before {
+  opacity: 0.55;
+}
+body::after {
+  background-image: radial-gradient(oklch(93% 0.008 278 / 0.05) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: linear-gradient(to bottom, transparent, black 30%, black 70%, transparent);
+}
+[data-theme='light'] body::after {
+  background-image: radial-gradient(oklch(21% 0.02 278 / 0.045) 1px, transparent 1px);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-3);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- 品牌标 ---------- */
 .c2a-logo {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #007aff, #5856d6);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
+  font-family: var(--font-display);
   font-weight: 700;
   font-size: 14px;
+  letter-spacing: 0.02em;
   flex-shrink: 0;
+  box-shadow: 0 2px 12px var(--accent-border);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.c2a-logo:hover {
+  transform: rotate(-4deg) scale(1.05);
+  box-shadow: var(--glow);
+}
+
+/* ---------- 卡片 ---------- */
+.ant-card {
+  border-radius: var(--radius-card) !important;
+  border: 1px solid var(--rule) !important;
+  box-shadow: var(--shadow-card);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+.ant-card:not(.c2a-still):hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-border) !important;
+  box-shadow: var(--glow);
+}
+.ant-card .ant-card-head {
+  border-bottom-color: var(--rule-soft);
+}
+.ant-card .ant-card-head-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* ---------- 按钮 ---------- */
+.ant-btn {
+  border-radius: var(--radius-ctl);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+.ant-btn:active {
+  transform: scale(0.97);
+}
+.ant-btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)) !important;
+  border: none !important;
+  box-shadow: 0 2px 10px var(--accent-border);
+  position: relative;
+  overflow: hidden;
+}
+.ant-btn-primary:hover {
+  filter: brightness(1.08);
+  box-shadow: var(--glow);
+}
+.ant-btn-primary::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -80%;
+  width: 55%;
+  height: 100%;
+  background: linear-gradient(105deg, transparent, oklch(100% 0 0 / 0.35), transparent);
+  transform: skewX(-18deg);
+  transition: left 460ms var(--ease-out);
+  pointer-events: none;
+}
+.ant-btn-primary:hover::after {
+  left: 130%;
+}
+.ant-btn-default:not(:disabled):hover {
+  border-color: var(--accent-border) !important;
+  color: var(--accent);
+}
+
+/* ---------- 表格 ---------- */
+.ant-table-wrapper .ant-table {
+  background: transparent;
+  border-radius: var(--radius-card);
+}
+.ant-table-wrapper .ant-table-container table > thead > tr > th {
+  background: transparent;
+  border-bottom: 1px solid var(--rule);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.ant-table-wrapper .ant-table-container table > thead > tr > th::before {
+  display: none;
+}
+.ant-table-wrapper .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--rule-soft);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: var(--paper-3);
+}
+.ant-table-wrapper .ant-table-tbody > tr:hover > td:first-child {
+  box-shadow: inset 2.5px 0 0 var(--accent);
+}
+.ant-table-wrapper .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+/* ---------- 侧栏 ---------- */
+.c2a-sider {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(16px);
+  border-inline-end: 1px solid var(--rule) !important;
+  transition: width 200ms var(--ease-out);
+}
+.c2a-sider .ant-menu {
+  background: transparent;
+  border-inline-end: none !important;
+  padding-top: 4px;
+}
+.c2a-sider .ant-menu-item,
+.c2a-sider .ant-menu-submenu-title {
+  border-radius: var(--radius-ctl);
+  margin-inline: var(--space-2xs) !important;
+  width: calc(100% - 16px);
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+.c2a-sider .ant-menu-item:hover {
+  transform: translateX(2px);
+  color: var(--accent);
+}
+.c2a-sider .ant-menu-item-selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.c2a-sider .ant-menu-item-selected::after {
+  display: none;
+}
+.c2a-sider .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -8px;
+  top: 20%;
+  height: 60%;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, var(--accent), var(--accent-2));
+}
+
+/* ---------- 顶栏 ---------- */
+.c2a-header {
+  border-bottom: 1px solid var(--rule-soft);
+  background: color-mix(in oklab, var(--paper) 72%, transparent) !important;
+  backdrop-filter: blur(10px);
+}
+
+/* ---------- 状态点 ---------- */
+.c2a-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot-color, var(--success));
+  position: relative;
+  flex-shrink: 0;
+}
+.c2a-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid var(--dot-color, var(--success));
+  opacity: 0.7;
+  animation: c2a-pulse 2.2s ease-out infinite;
+}
+@keyframes c2a-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+  70%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+/* ---------- 统计卡 ---------- */
+.c2a-stat-num {
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.c2a-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.c2a-stat-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  transition: transform var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.ant-card:hover .c2a-stat-icon {
+  transform: scale(1.1) rotate(-5deg);
+}
+.c2a-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1.5px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  background: var(--paper-3);
+  border: 1px solid var(--rule);
+  color: var(--ink-2);
+  transition: border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.ant-card:hover .c2a-chip {
+  border-color: var(--accent-border);
+}
+
+/* ---------- 路由过渡 ---------- */
+.c2a-page {
+  animation: c2a-page-in var(--dur-med) var(--ease-out) both;
+}
+@keyframes c2a-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- 登录页：极光 ---------- */
+.c2a-login {
+  position: relative;
+  overflow: clip;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+.c2a-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.c2a-blob-a {
+  width: 480px;
+  height: 480px;
+  background: var(--accent);
+  top: -120px;
+  left: -100px;
+  animation: c2a-drift 17s ease-in-out infinite alternate;
+}
+.c2a-blob-b {
+  width: 420px;
+  height: 420px;
+  background: var(--accent-2);
+  bottom: -140px;
+  right: -90px;
+  animation: c2a-drift 21s ease-in-out infinite alternate-reverse;
+}
+@keyframes c2a-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(70px, 46px) scale(1.12);
+  }
+}
+.c2a-glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--rule);
+  border-radius: 18px;
+  box-shadow: 0 18px 60px oklch(0% 0 0 / 0.35), var(--glow);
+}
+
+/* ---------- 杂项 ---------- */
+.c2a-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.c2a-grad-text {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.ant-tag {
+  border-radius: var(--radius-pill);
+}
+.ant-modal .ant-modal-content {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--rule);
+}
+.ant-segmented {
+  border-radius: var(--radius-pill);
+}
+.ant-input-affix-wrapper,
+.ant-input {
+  border-radius: var(--radius-ctl);
+}
+.ant-input:hover,
+.ant-input-affix-wrapper:hover {
+  border-color: var(--accent-border) !important;
+}
+
+/* ---------- 动效减弱 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.15s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.15s !important;
+  }
+  .c2a-blob {
+    animation: none;
+  }
 }

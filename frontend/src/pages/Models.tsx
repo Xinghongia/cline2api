@@ -213,7 +213,7 @@ export default function Models() {
         }
       />
       {models.data?.lastSync ? (
-        <p style={{ color: '#999', marginTop: -8 }}>
+        <p style={{ color: 'var(--ink-2)', marginTop: -8 }}>
           {t('models.lastSync', '上次同步')}: {fmtTime(models.data.lastSync.syncedAt)} · {t('models.total', '共')}{' '}
           {models.data.lastSync.total} {t('models.modelsUnit', '个')}
         </p>
@@ -288,7 +288,7 @@ export default function Models() {
             <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
           </Form.Item>
         </Form>
-        <p style={{ color: '#999' }}>{t('models.ctxHint', '填 0 会解锁被远程同步锁定的元数据，恢复内置默认值。')}</p>
+        <p style={{ color: 'var(--ink-2)' }}>{t('models.ctxHint', '填 0 会解锁被远程同步锁定的元数据，恢复内置默认值。')}</p>
       </Modal>
     </>
   )
