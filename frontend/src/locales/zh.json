@@ -12,12 +12,6 @@
   },
   "app": {
     "title": "Cline2API",
-    "subtitle": "Cline API 反向代理",
-    "theme": "主题",
-    "language": "语言"
-  },
-  "placeholder": {
-    "title": "建设中",
-    "desc": "该页面将在功能对齐阶段（M1）实现，当前为 M0 骨架占位。"
+    "subtitle": "Cline API 反向代理"
   }
 }

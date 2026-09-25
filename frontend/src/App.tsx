@@ -1,4 +1,5 @@
-import { Layout, Menu, Button, Space, Typography } from 'antd'
+import { useEffect, useState } from 'react'
+import { Layout, Menu, Button, Space, Spin, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import {
   DashboardOutlined,
@@ -17,29 +18,51 @@ import {
 import { NavLink, Route, Routes, Navigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
+import { api, UNAUTHORIZED_EVENT } from './api/client'
 import { useAppearance } from './theme'
-import PlaceholderPage from './components/PlaceholderPage'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Accounts from './pages/Accounts'
+import Logs from './pages/Logs'
+import Models from './pages/Models'
+import Providers from './pages/Providers'
+import Upstreams from './pages/Upstreams'
+import Keys from './pages/Keys'
+import Settings from './pages/Settings'
+import About from './pages/About'
 
 const { Sider, Content, Header } = Layout
 
 const NAV_ITEMS = [
-  { key: '/dashboard', icon: <DashboardOutlined />, labelKey: 'nav.dashboard' },
-  { key: '/accounts', icon: <TeamOutlined />, labelKey: 'nav.accounts' },
-  { key: '/logs', icon: <FileTextOutlined />, labelKey: 'nav.logs' },
-  { key: '/models', icon: <AppstoreOutlined />, labelKey: 'nav.models' },
-  { key: '/providers', icon: <ApiOutlined />, labelKey: 'nav.providers' },
-  { key: '/upstreams', icon: <CloudServerOutlined />, labelKey: 'nav.upstreams' },
-  { key: '/keys', icon: <KeyOutlined />, labelKey: 'nav.keys' },
-  { key: '/settings', icon: <SettingOutlined />, labelKey: 'nav.settings' },
-  { key: '/about', icon: <InfoCircleOutlined />, labelKey: 'nav.about' },
+  { key: '/dashboard', icon: <DashboardOutlined />, labelKey: 'nav.dashboard', def: '仪表盘' },
+  { key: '/accounts', icon: <TeamOutlined />, labelKey: 'nav.accounts', def: '账号管理' },
+  { key: '/logs', icon: <FileTextOutlined />, labelKey: 'nav.logs', def: '请求日志' },
+  { key: '/models', icon: <AppstoreOutlined />, labelKey: 'nav.models', def: '模型管理' },
+  { key: '/providers', icon: <ApiOutlined />, labelKey: 'nav.providers', def: '提供商' },
+  { key: '/upstreams', icon: <CloudServerOutlined />, labelKey: 'nav.upstreams', def: '上游服务' },
+  { key: '/keys', icon: <KeyOutlined />, labelKey: 'nav.keys', def: '密钥与安全' },
+  { key: '/settings', icon: <SettingOutlined />, labelKey: 'nav.settings', def: '设置' },
+  { key: '/about', icon: <InfoCircleOutlined />, labelKey: 'nav.about', def: '关于' },
 ]
+
+const ROUTES: Record<string, React.ComponentType> = {
+  '/dashboard': Dashboard,
+  '/accounts': Accounts,
+  '/logs': Logs,
+  '/models': Models,
+  '/providers': Providers,
+  '/upstreams': Upstreams,
+  '/keys': Keys,
+  '/settings': Settings,
+  '/about': About,
+}
 
 function useNavItems(): MenuProps['items'] {
   const { t } = useTranslation()
   return NAV_ITEMS.map((item) => ({
     key: item.key,
     icon: item.icon,
-    label: <NavLink to={item.key}>{t(item.labelKey)}</NavLink>,
+    label: <NavLink to={item.key}>{t(item.labelKey, { defaultValue: item.def })}</NavLink>,
   }))
 }
 
@@ -55,10 +78,10 @@ function AppShell() {
           <div className="c2a-logo">C2</div>
           <div>
             <Typography.Text strong style={{ display: 'block', lineHeight: 1.2 }}>
-              {t('app.title')}
+              {t('app.title', 'Cline2API')}
             </Typography.Text>
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {t('app.subtitle')}
+              {t('app.subtitle', 'Cline API 反向代理')}
             </Typography.Text>
           </div>
         </div>
@@ -93,13 +116,10 @@ function AppShell() {
         <Content style={{ padding: '8px 24px 40px', overflow: 'auto' }}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            {NAV_ITEMS.map((item) => (
-              <Route
-                key={item.key}
-                path={item.key}
-                element={<PlaceholderPage titleKey={item.labelKey} />}
-              />
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const Page = ROUTES[item.key]
+              return <Route key={item.key} path={item.key} element={<Page />} />
+            })}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </Content>
@@ -108,6 +128,31 @@ function AppShell() {
   )
 }
 
-export default function App() {
+/** 认证门：首次探测 /config；任何请求 401 都会回到登录页 */
+function AuthGate() {
+  const [authed, setAuthed] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const on401 = () => setAuthed(false)
+    window.addEventListener(UNAUTHORIZED_EVENT, on401)
+    api
+      .get('/config')
+      .then(() => setAuthed(true))
+      .catch(() => setAuthed(false))
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, on401)
+  }, [])
+
+  if (authed === null) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
+        <Spin size="large" />
+      </div>
+    )
+  }
+  if (!authed) return <Login onSuccess={() => setAuthed(true)} />
   return <AppShell />
+}
+
+export default function App() {
+  return <AuthGate />
 }

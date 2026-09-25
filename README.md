@@ -18,7 +18,7 @@ Cline API 反向代理 · 多账号轮询 · 双协议兼容 · 桌面端
 
 Cline2API 是 Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中英文管理后台（自动跟随浏览器语言，可手动切换）。提供跨平台桌面端单文件应用（Windows / macOS / Linux），双击即用。
 
-**开发语言**：Go（后端 + 代理 + 桌面壳），HTML/CSS/JS（管理后台前端，内嵌于二进制）。
+**开发语言**：Go（后端 + 代理 + 桌面壳），React 19 + TypeScript + Ant Design 6（管理后台前端，Vite 构建后 go:embed 内嵌于二进制）。
 
 ## 功能
 
@@ -205,14 +205,22 @@ git push origin v1.0.0
 ├── desktop_main.go      桌面端入口（go build -tags desktop）
 ├── proxy.go             HTTP 服务、API 路由、协议转换、SSE
 ├── admin.go             管理后台 REST API
-├── admin_html.go        管理后台前端（内嵌）
-├── auth.go              WorkOS OAuth + Token 刷新
-├── pool.go              账号池管理、多位置数据查找
-├── request_logs.go      请求日志
+├── frontend_dist.go     管理后台前端嵌入（go:embed frontend/dist）
+├── frontend/            管理后台前端源码（React 19 + TS + Ant Design 6，Vite 构建）
+├── docs/                技术文档中心（架构说明 + 工作日志）
 ├── desktop/             桌面端构建脚本、文档、图标生成器
-├── Dockerfile           Docker 构建
+├── Dockerfile           Docker 构建（多阶段：Node 构建前端 → Go 构建后端）
 ├── docker-compose.yml   Docker Compose
 └── .github/workflows/   CI 三平台自动构建
+```
+
+### 前端开发
+
+```bash
+cd frontend
+npm ci
+npm run dev     # http://localhost:5173/admin/，API 经代理转发到 127.0.0.1:3457
+npm run build   # 产物输出 frontend/dist，go build 时自动嵌入
 ```
 
 ## 技术栈

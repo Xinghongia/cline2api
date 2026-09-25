@@ -259,7 +259,7 @@ func handleAdminPassword(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// adminStaticHandler 已迁移至 frontend_dist.go（SPA 嵌入服务，含旧 UI 兜底）。
+// adminStaticHandler 已迁移至 frontend_dist.go（React SPA 嵌入服务）。
 
 // GET /admin/api/accounts
 func handleAdminAccounts(w http.ResponseWriter, r *http.Request) {

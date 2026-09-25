@@ -25,20 +25,9 @@ func mustSubFS(fsys fs.FS, dir string) fs.FS {
 	return sub
 }
 
-// hasBuiltFrontend 报告 dist 里是否有真实构建产物（而非 .gitkeep 占位）。
-func hasBuiltFrontend() bool {
-	f, err := frontendDistRoot.Open("index.html")
-	if err != nil {
-		return false
-	}
-	_ = f.Close()
-	return true
-}
-
 // adminStaticHandler 服务嵌入的 React SPA：
 //   - /admin/ 与无扩展名的未知路径回退 index.html（前端路由）
 //   - /assets/* 长缓存（Vite 产物文件名带内容哈希）
-//   - dist 未构建时回退旧版内嵌 HTML（过渡期安全网）
 func adminStaticHandler(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(r.URL.Path, "/admin")
 	rel = strings.TrimPrefix(rel, "/")
@@ -77,15 +66,10 @@ func adminStaticHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveAdminIndex(w http.ResponseWriter, r *http.Request) {
-	if !hasBuiltFrontend() {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(adminHTML))
-		return
-	}
 	f, err := frontendDistRoot.Open("index.html")
 	if err != nil {
-		http.NotFound(w, r)
+		// dist 占位（未执行 npm run build）：给出可操作的错误而非空白页
+		http.Error(w, "admin frontend not built: run `npm ci && npm run build` in frontend/", http.StatusNotImplemented)
 		return
 	}
 	defer f.Close()
