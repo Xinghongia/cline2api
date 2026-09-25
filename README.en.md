@@ -40,7 +40,7 @@ Cline2API is a reverse proxy for the Cline API with multi-account rotation, dual
 
 ### Option 1: Desktop app (recommended for sharing)
 
-Download the executable for your platform from [Releases](https://github.com/luawei1/cline2api/releases) and double-click it.
+Download the executable for your platform from [Releases](https://github.com/Xinghongia/cline2api/releases) and double-click it.
 
 > On Windows, the SmartScreen "Windows protected your PC" warning is normal because no code-signing certificate is purchased. Click "More info → Run anyway".
 

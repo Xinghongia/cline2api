@@ -7,7 +7,7 @@ import type { AdminConfig } from '../api/types'
 import PageHeader from '../components/PageHeader'
 import { openExternal } from '../utils'
 
-const REPO = 'https://github.com/luawei1/cline2api'
+const REPO = 'https://github.com/Xinghongia/cline2api'
 
 export default function About() {
   const { t } = useTranslation()

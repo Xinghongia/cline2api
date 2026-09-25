@@ -40,7 +40,7 @@ Cline2API 是 Cline API 的反向代理服务，支持多账号轮询、OpenAI �
 
 ### 方式一：桌面端（推荐，分享给他人）
 
-从 [Releases](https://github.com/luawei1/cline2api/releases) 下载对应平台的可执行文件，双击运行即可。
+从 [Releases](https://github.com/Xinghongia/cline2api/releases) 下载对应平台的可执行文件，双击运行即可。
 
 > Windows 提示 SmartScreen「已保护你的电脑」是**未购买代码签名证书的正常现象**，
 > 点击「更多信息 → 仍要运行」即可，不影响使用。
