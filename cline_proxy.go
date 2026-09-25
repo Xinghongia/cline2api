@@ -2,6 +2,7 @@ package main
 
 import (
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/httpx"
 	"context"
 	"encoding/json"
 	"log"
@@ -188,4 +189,10 @@ func clineDirectDialHost(addr string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+}
+
+// init 将出口代理池钩子注入全局 transport（httpx 无法反向依赖本包，用赋值解耦）。
+func init() {
+	httpx.Transport.Proxy = clineOutboundProxy
+	httpx.Transport.DialContext = clineDialContext
 }

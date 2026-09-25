@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
@@ -319,7 +320,7 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, reqLo
 						if m, ok := obj["model"].(string); ok && m != "" {
 							s.model = m
 						}
-						usage := parseTokenUsage(obj["usage"])
+						usage := types.ParseTokenUsage(obj["usage"])
 						if usage.Valid {
 							latestUsage = mergeTokenUsage(latestUsage, usage)
 						}
@@ -381,7 +382,7 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, reqLo
 		if acc != nil && latestUsage.Valid {
 			recordTokenUsage(acc, reqLog.Model, latestUsage)
 		}
-		finalizeRequestLog(reqLog, latestUsage, firstOutputAt, startedAt, true, "")
+		reqlog.FinalizeRequestLog(reqLog, latestUsage, firstOutputAt, startedAt, true, "")
 	}
 }
 
@@ -492,7 +493,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 
 	switch route {
 	case "reject":
-		finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "paid zen model rejected")
+		reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "paid zen model rejected")
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": map[string]string{
 				"message": fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", chatModel),
@@ -532,21 +533,21 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 					}
 					var raw map[string]any
 					if err := json.NewDecoder(fbResp.Body).Decode(&raw); err != nil {
-						finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+						reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 						writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 						return
 					}
 					out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
-					usage := parseTokenUsage(out2["usage"])
+					usage := types.ParseTokenUsage(out2["usage"])
 					recordTokenUsage(fbAcc, reqLog.Model, usage)
-					finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+					reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 					writeJSON(w, http.StatusOK, chatToResponses(out2))
 					return
 				}
 				err = fbErr
 			}
 			log.Printf("  responses api error: %v", err)
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -565,13 +566,13 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		var raw map[string]any
 		if err := json.NewDecoder(upResp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
 		out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
-		usage := parseTokenUsage(out2["usage"])
-		finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+		usage := types.ParseTokenUsage(out2["usage"])
+		reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 		writeJSON(w, http.StatusOK, chatToResponses(out2))
 
 	default: // cline
@@ -585,7 +586,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Printf("  responses api error: %v", err)
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, clineErrorHTTPStatus(err), map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -608,18 +609,18 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		var raw map[string]any
 		if err := json.NewDecoder(upResp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 			})
 			return
 		}
 		out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
-		usage := parseTokenUsage(out2["usage"])
+		usage := types.ParseTokenUsage(out2["usage"])
 		if acc != nil {
 			recordTokenUsage(acc, reqLog.Model, usage)
 		}
-		finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+		reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 		writeJSON(w, http.StatusOK, chatToResponses(out2))
 	}
 }

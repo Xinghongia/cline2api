@@ -1,7 +1,8 @@
-package main
+package reqlog
 
 import (
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
 	"encoding/base64"
 	"encoding/json"
@@ -13,10 +14,10 @@ import (
 )
 
 const (
-	requestLogMaxEntries   = 5000
-	requestLogMaxAge       = 30 * 24 * time.Hour
-	requestLogDefaultLimit = 50
-	requestLogMaxLimit     = 100
+	requestLogMaxEntries = 5000
+	requestLogMaxAge     = 30 * 24 * time.Hour
+	DefaultLimit         = 50
+	MaxLimit             = 100
 )
 
 var (
@@ -29,7 +30,7 @@ func init() {
 	requestLogsPath = apphome.ResolveDataPath(".cline-request-logs.json")
 }
 
-func loadRequestLogs() {
+func LoadRequestLogs() {
 	data, err := os.ReadFile(requestLogsPath)
 	if err != nil {
 		return
@@ -80,7 +81,7 @@ func saveRequestLogsLocked() {
 	_ = os.Rename(tmp, requestLogsPath)
 }
 
-func appendRequestLog(entry types.RequestLog) {
+func AppendRequestLog(entry types.RequestLog) {
 	if entry.ID == "" {
 		entry.ID = fmt.Sprintf("req_%d", entry.StartedAt.UnixNano())
 	}
@@ -91,7 +92,7 @@ func appendRequestLog(entry types.RequestLog) {
 	requestLogsMu.Unlock()
 }
 
-type requestLogPage struct {
+type RequestLogPage struct {
 	Items      []types.RequestLog `json:"items"`
 	NextCursor string             `json:"nextCursor"`
 	HasMore    bool               `json:"hasMore"`
@@ -115,12 +116,12 @@ func decodeCursor(cursor string) (time.Time, string, error) {
 	return time.Unix(0, ts), id, nil
 }
 
-func listRequestLogs(limit int, cursor string) (requestLogPage, error) {
+func ListRequestLogs(limit int, cursor string) (RequestLogPage, error) {
 	if limit <= 0 {
-		limit = requestLogDefaultLimit
+		limit = DefaultLimit
 	}
-	if limit > requestLogMaxLimit {
-		limit = requestLogMaxLimit
+	if limit > MaxLimit {
+		limit = MaxLimit
 	}
 
 	var afterTime time.Time
@@ -128,7 +129,7 @@ func listRequestLogs(limit int, cursor string) (requestLogPage, error) {
 	if cursor != "" {
 		t, id, err := decodeCursor(cursor)
 		if err != nil {
-			return requestLogPage{}, err
+			return RequestLogPage{}, err
 		}
 		afterTime = t
 		afterID = id
@@ -155,7 +156,7 @@ func listRequestLogs(limit int, cursor string) (requestLogPage, error) {
 		}
 	}
 
-	page := requestLogPage{Items: result}
+	page := RequestLogPage{Items: result}
 	if len(result) == limit {
 		page.NextCursor = encodeCursor(lastEntry)
 		page.HasMore = true
@@ -163,11 +164,11 @@ func listRequestLogs(limit int, cursor string) (requestLogPage, error) {
 	return page, nil
 }
 
-func finalizeRequestLog(entry *types.RequestLog, usage types.TokenUsage, firstOutputAt time.Time, startedAt time.Time, completed bool, errMsg string) {
+func FinalizeRequestLog(entry *types.RequestLog, usage types.TokenUsage, firstOutputAt time.Time, startedAt time.Time, completed bool, errMsg string) {
 	entry.FinishedAt = time.Now()
 	entry.DurationMs = entry.FinishedAt.Sub(startedAt).Milliseconds()
 	entry.Completed = completed
-	entry.Error = truncate(errMsg, 200)
+	entry.Error = strutil.Truncate(errMsg, 200)
 
 	if usage.Valid {
 		entry.UsageAvailable = true
@@ -185,5 +186,68 @@ func finalizeRequestLog(entry *types.RequestLog, usage types.TokenUsage, firstOu
 		}
 	}
 
-	appendRequestLog(*entry)
+	AppendRequestLog(*entry)
+}
+
+// Filter 返回满足谓词的日志副本，调用方无需触碰内部锁与切片。
+func Filter(pred func(types.RequestLog) bool) []types.RequestLog {
+	requestLogsMu.Lock()
+	defer requestLogsMu.Unlock()
+	var out []types.RequestLog
+	for _, e := range requestLogs {
+		if pred(e) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// SwapForTest 替换整个日志存储并返回恢复函数（仅测试隔离使用）。
+func SwapForTest(entries []types.RequestLog) (restore func()) {
+	requestLogsMu.Lock()
+	old := requestLogs
+	requestLogs = entries
+	requestLogsMu.Unlock()
+	return func() {
+		requestLogsMu.Lock()
+		requestLogs = old
+		requestLogsMu.Unlock()
+	}
+}
+
+// Len 返回当前日志条数。
+func Len() int {
+	requestLogsMu.Lock()
+	defer requestLogsMu.Unlock()
+	return len(requestLogs)
+}
+
+// At 返回第 i 条日志（测试断言用，越界返回零值）。
+func At(i int) types.RequestLog {
+	requestLogsMu.Lock()
+	defer requestLogsMu.Unlock()
+	if i < 0 || i >= len(requestLogs) {
+		return types.RequestLog{}
+	}
+	return requestLogs[i]
+}
+
+// Path 返回日志文件路径（测试备份用）。
+func Path() string {
+	requestLogsMu.Lock()
+	defer requestLogsMu.Unlock()
+	return requestLogsPath
+}
+
+// SetPathForTest 重定向日志文件路径并返回恢复函数（测试隔离用）。
+func SetPathForTest(p string) (restore func()) {
+	requestLogsMu.Lock()
+	old := requestLogsPath
+	requestLogsPath = p
+	requestLogsMu.Unlock()
+	return func() {
+		requestLogsMu.Lock()
+		requestLogsPath = old
+		requestLogsMu.Unlock()
+	}
 }

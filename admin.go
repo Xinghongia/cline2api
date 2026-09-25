@@ -2,6 +2,8 @@ package main
 
 import (
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/reqlog"
+	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
 	"crypto/rand"
 	"crypto/sha256"
@@ -576,7 +578,7 @@ func handleSSOImport(w http.ResponseWriter, r *http.Request) {
 			}
 			resp, err := refreshClineToken(token)
 			if err != nil {
-				errors = append(errors, fmt.Sprintf("token %s...: %v", truncate(token, 16), err))
+				errors = append(errors, fmt.Sprintf("token %s...: %v", strutil.Truncate(token, 16), err))
 				continue
 			}
 			email := req.Email
@@ -1393,7 +1395,7 @@ func handleAdminRequestLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := requestLogDefaultLimit
+	limit := reqlog.DefaultLimit
 	if v := r.URL.Query().Get("limit"); v != "" {
 		var n int
 		if _, err := fmt.Sscanf(v, "%d", &n); err != nil || n <= 0 {
@@ -1404,7 +1406,7 @@ func handleAdminRequestLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	cursor := r.URL.Query().Get("cursor")
 
-	page, err := listRequestLogs(limit, cursor)
+	page, err := reqlog.ListRequestLogs(limit, cursor)
 	if err != nil {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
 		return

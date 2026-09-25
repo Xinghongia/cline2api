@@ -1,4 +1,4 @@
-package main
+package reqlog
 
 import (
 	"cline-go-proxy/internal/types"
@@ -41,7 +41,7 @@ func TestListRequestLogsCursorPagination(t *testing.T) {
 	requestLogs = pruneRequestLogsLocked(entries)
 	requestLogsMu.Unlock()
 
-	page1, err := listRequestLogs(50, "")
+	page1, err := ListRequestLogs(50, "")
 	if err != nil {
 		t.Fatalf("page1: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestListRequestLogsCursorPagination(t *testing.T) {
 		t.Fatalf("page1 first item = %q, want %q", page1.Items[0].ID, requestLogs[0].ID)
 	}
 
-	page2, err := listRequestLogs(50, page1.NextCursor)
+	page2, err := ListRequestLogs(50, page1.NextCursor)
 	if err != nil {
 		t.Fatalf("page2: %v", err)
 	}
@@ -66,13 +66,13 @@ func TestListRequestLogsCursorPagination(t *testing.T) {
 }
 
 func TestListRequestLogsRejectsInvalidCursor(t *testing.T) {
-	if _, err := listRequestLogs(50, "not-a-valid-cursor"); err == nil {
+	if _, err := ListRequestLogs(50, "not-a-valid-cursor"); err == nil {
 		t.Fatal("expected error for invalid cursor")
 	}
 }
 
 func TestParseTokenUsageCachePrecedence(t *testing.T) {
-	usage := parseTokenUsage(map[string]any{
+	usage := types.ParseTokenUsage(map[string]any{
 		"prompt_tokens": float64(100),
 		"prompt_tokens_details": map[string]any{
 			"cached_tokens": float64(40),

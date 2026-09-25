@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
 	"context"
 	"encoding/json"
@@ -90,11 +92,11 @@ func protocolTestServer(t *testing.T) string {
 func TestOpenAIChatCompletionsFreeFallsBackToDS(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -118,7 +120,7 @@ func TestOpenAIChatCompletionsFreeFallsBackToDS(t *testing.T) {
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -189,24 +191,20 @@ func TestOpenAIChatCompletionsFreeFallsBackToDS(t *testing.T) {
 func TestOpenAIResponsesFreeFallsBackToDSAndPreservesResponseFormat(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
-	oldLogData, oldLogErr := os.ReadFile(requestLogsPath)
-	requestLogsMu.Lock()
-	oldLogs := requestLogs
-	requestLogs = nil
-	requestLogsMu.Unlock()
-	_ = os.Remove(requestLogsPath)
+	oldTransport := httpx.Client.Transport
+	logPath := reqlog.Path()
+	oldLogData, oldLogErr := os.ReadFile(logPath)
+	restoreLogs := reqlog.SwapForTest(nil)
+	_ = os.Remove(logPath)
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
-		requestLogsMu.Lock()
-		requestLogs = oldLogs
-		requestLogsMu.Unlock()
+		httpx.Client.Transport = oldTransport
+		restoreLogs()
 		if oldLogErr != nil {
-			_ = os.Remove(requestLogsPath)
+			_ = os.Remove(logPath)
 		} else {
-			_ = os.WriteFile(requestLogsPath, oldLogData, 0600)
+			_ = os.WriteFile(logPath, oldLogData, 0600)
 		}
 	})
 
@@ -231,7 +229,7 @@ func TestOpenAIResponsesFreeFallsBackToDSAndPreservesResponseFormat(t *testing.T
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -301,24 +299,22 @@ func TestOpenAIResponsesFreeFallsBackToDSAndPreservesResponseFormat(t *testing.T
 		t.Fatalf("models = %q, want %q", got, want)
 	}
 
-	requestLogsMu.Lock()
-	defer requestLogsMu.Unlock()
-	if len(requestLogs) != 1 {
-		t.Fatalf("request log count = %d, want 1", len(requestLogs))
+	if reqlog.Len() != 1 {
+		t.Fatalf("request log count = %d, want 1", reqlog.Len())
 	}
-	if requestLogs[0].Model != freeModelFallback {
-		t.Fatalf("request log model = %q, want %q", requestLogs[0].Model, freeModelFallback)
+	if reqlog.At(0).Model != freeModelFallback {
+		t.Fatalf("request log model = %q, want %q", reqlog.At(0).Model, freeModelFallback)
 	}
 }
 
 func TestAnthropicMessagesFreeFallsBackToDSAndPreservesResponseFormat(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -342,7 +338,7 @@ func TestAnthropicMessagesFreeFallsBackToDSAndPreservesResponseFormat(t *testing
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -425,11 +421,11 @@ func TestAnthropicMessagesFreeFallsBackToDSAndPreservesResponseFormat(t *testing
 func TestOpenAIChatCompletionsFreeStreamFallsBackBeforeResponseHeaders(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -453,7 +449,7 @@ func TestOpenAIChatCompletionsFreeStreamFallsBackBeforeResponseHeaders(t *testin
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -517,11 +513,11 @@ func TestOpenAIChatCompletionsFreeStreamFallsBackBeforeResponseHeaders(t *testin
 func TestOpenAIChatCompletionsFreeStreamDoesNotRetryAfterResponseStarts(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -545,7 +541,7 @@ func TestOpenAIChatCompletionsFreeStreamDoesNotRetryAfterResponseStarts(t *testi
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)

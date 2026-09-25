@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/httpx"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"io"
@@ -14,11 +15,11 @@ import (
 func TestCustomProviderServesModel(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 		_ = deleteProvider("prov_test1")
 	})
 
@@ -31,7 +32,7 @@ func TestCustomProviderServesModel(t *testing.T) {
 	upstreamModel := ""
 	providerCalls := 0
 	clineCalls := 0
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "provider.test" {
 			providerCalls++
 			body, _ := io.ReadAll(req.Body)
@@ -85,11 +86,11 @@ func TestCustomProviderServesModel(t *testing.T) {
 func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 		_ = deleteProvider("prov_test2")
 	})
 
@@ -99,7 +100,7 @@ func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 	}}}
 	setProxyConfig(defaultProxyConfig())
 
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "provider.test" {
 			return &http.Response{
 				StatusCode: http.StatusInternalServerError,

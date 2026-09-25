@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"net/http"
@@ -19,9 +20,9 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	oldPoolPath, oldLogsPath := poolPath, requestLogsPath
+	oldPoolPath := poolPath
 	poolPath = filepath.Join(tmp, ".cline-accounts.json")
-	requestLogsPath = filepath.Join(tmp, ".cline-request-logs.json")
+	restoreLogsPath := reqlog.SetPathForTest(filepath.Join(tmp, ".cline-request-logs.json"))
 
 	poolMu.Lock()
 	pool = nil // 强制从临时路径重新加载
@@ -29,7 +30,8 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	poolPath, requestLogsPath = oldPoolPath, oldLogsPath
+	poolPath = oldPoolPath
+	restoreLogsPath()
 	os.RemoveAll(tmp)
 	os.Exit(code)
 }
@@ -556,9 +558,9 @@ func TestAnthropicThinkingMapping(t *testing.T) {
 	}
 	for _, c := range cases {
 		req := anthropicReq{
-			Model: "m1",
-			MaxTokens:   100,
-			Messages:    []anthropicMsg{{Role: "user", Content: "hi"}},
+			Model:     "m1",
+			MaxTokens: 100,
+			Messages:  []anthropicMsg{{Role: "user", Content: "hi"}},
 		}
 		if c.thinking != "" {
 			req.Thinking = json.RawMessage(c.thinking)

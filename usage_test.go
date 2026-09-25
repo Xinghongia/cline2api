@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseTokenUsageOpenAIFields(t *testing.T) {
-	usage := parseTokenUsage(map[string]any{
+	usage := types.ParseTokenUsage(map[string]any{
 		"prompt_tokens":     float64(120),
 		"completion_tokens": float64(45),
 		"total_tokens":      float64(165),
@@ -17,7 +17,7 @@ func TestParseTokenUsageOpenAIFields(t *testing.T) {
 }
 
 func TestParseTokenUsageFallsBackToSum(t *testing.T) {
-	usage := parseTokenUsage(map[string]any{
+	usage := types.ParseTokenUsage(map[string]any{
 		"input_tokens":  float64(7),
 		"output_tokens": float64(3),
 	})
@@ -27,7 +27,7 @@ func TestParseTokenUsageFallsBackToSum(t *testing.T) {
 }
 
 func TestParseTokenUsageTracksOpenAICachedTokens(t *testing.T) {
-	usage := parseTokenUsage(map[string]any{
+	usage := types.ParseTokenUsage(map[string]any{
 		"prompt_tokens":     float64(120),
 		"completion_tokens": float64(45),
 		"total_tokens":      float64(165),
@@ -41,7 +41,7 @@ func TestParseTokenUsageTracksOpenAICachedTokens(t *testing.T) {
 }
 
 func TestParseTokenUsageTracksAnthropicCachedTokens(t *testing.T) {
-	usage := parseTokenUsage(map[string]any{
+	usage := types.ParseTokenUsage(map[string]any{
 		"input_tokens":                float64(100),
 		"output_tokens":               float64(20),
 		"cache_read_input_tokens":     float64(70),
@@ -63,7 +63,7 @@ func TestMergeTokenUsagePreservesStreamFields(t *testing.T) {
 }
 
 func TestParseTokenUsageRejectsMissingUsage(t *testing.T) {
-	if usage := parseTokenUsage(nil); usage.Valid {
+	if usage := types.ParseTokenUsage(nil); usage.Valid {
 		t.Fatalf("usage should be invalid: %+v", usage)
 	}
 }

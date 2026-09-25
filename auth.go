@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/strutil"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -122,15 +124,15 @@ func saveCredentials(rt string) {
 
 func workosDeviceAuth() (*deviceAuthResp, error) {
 	form := url.Values{"client_id": {workosClientID}}
-	resp, err := httpPostForm(workosDeviceAuthURL, form)
+	resp, err := httpx.PostForm(workosDeviceAuthURL, form)
 	if err != nil {
 		return nil, fmt.Errorf("workos device auth: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		body := readBody(resp)
-		return nil, fmt.Errorf("workos device auth failed: %d %s", resp.StatusCode, truncate(body, 200))
+		body := httpx.ReadBody(resp)
+		return nil, fmt.Errorf("workos device auth failed: %d %s", resp.StatusCode, strutil.Truncate(body, 200))
 	}
 
 	var d deviceAuthResp
@@ -153,7 +155,7 @@ func pollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateR
 			"device_code": {deviceCode},
 			"client_id":   {workosClientID},
 		}
-		resp, err := httpPostForm(workosAuthenticateURL, form)
+		resp, err := httpx.PostForm(workosAuthenticateURL, form)
 		if err != nil {
 			return nil, fmt.Errorf("workos poll: %w", err)
 		}
@@ -191,15 +193,15 @@ func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, erro
 		"accessToken":  workosAccess,
 		"refreshToken": workosRefresh,
 	}
-	resp, err := httpPostJSON(clineAPIBase+"/auth/register", body)
+	resp, err := httpx.PostJSON(clineAPIBase+"/auth/register", body)
 	if err != nil {
 		return nil, fmt.Errorf("cline register: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		b := readBody(resp)
-		return nil, fmt.Errorf("cline register failed: %d %s", resp.StatusCode, truncate(b, 200))
+		b := httpx.ReadBody(resp)
+		return nil, fmt.Errorf("cline register failed: %d %s", resp.StatusCode, strutil.Truncate(b, 200))
 	}
 
 	var c clineAuthResp
@@ -214,7 +216,7 @@ func refreshClineToken(refreshToken string) (*clineRefreshResp, error) {
 		"refreshToken": refreshToken,
 		"grantType":    "refresh_token",
 	}
-	resp, err := httpPostJSON(clineAPIBase+"/auth/refresh", body)
+	resp, err := httpx.PostJSON(clineAPIBase+"/auth/refresh", body)
 	if err != nil {
 		return nil, fmt.Errorf("cline refresh: %w", err)
 	}
@@ -365,7 +367,7 @@ func openBrowser(url string) error {
 		return fmt.Errorf("no browser opener found")
 	}
 
-	return runCommand(cmd, args...)
+	return httpx.RunCommand(cmd, args...)
 }
 
 func isWindows() bool {

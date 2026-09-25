@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/reqlog"
+	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
@@ -249,8 +252,8 @@ func callProvider(p *CustomProvider, params map[string]any, stream bool) (*http.
 	if timeout <= 0 {
 		timeout = 5 * time.Minute
 	}
-	// 复用全局 transport（测试/代理定制经由 httpClient.Transport 生效）
-	client := &http.Client{Transport: httpClient.Transport, Timeout: timeout}
+	// 复用全局 transport（测试/代理定制经由 httpx.Client.Transport 生效）
+	client := &http.Client{Transport: httpx.Client.Transport, Timeout: timeout}
 
 	log.Printf("  provider upstream: name=%s model=%v stream=%v msgs=%d", p.Name, params["model"], stream, getMsgCount(params))
 	resp, err := client.Do(req)
@@ -268,7 +271,7 @@ func callProvider(p *CustomProvider, params map[string]any, stream bool) (*http.
 		until = time.Now().Add(ra)
 	}
 	setProviderCooldown(p.ID, fmt.Sprintf("%v", params["model"]), until)
-	return nil, &clineAPIError{statusCode: resp.StatusCode, message: truncate(string(bodyBytes), 500)}
+	return nil, &clineAPIError{statusCode: resp.StatusCode, message: strutil.Truncate(string(bodyBytes), 500)}
 }
 
 // handleProviderStreamResponse 转发 provider 的流式响应（OpenAI 格式）。
@@ -305,7 +308,7 @@ func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response
 			var obj map[string]any
 			if json.Unmarshal([]byte(payload), &obj) == nil {
 				normalized := normalizeOpenAIResponse(obj)
-				if u := parseTokenUsage(normalized["usage"]); u.Valid {
+				if u := types.ParseTokenUsage(normalized["usage"]); u.Valid {
 					latestUsage = mergeTokenUsage(latestUsage, u)
 				}
 				if firstOutputAt.IsZero() && hasFirstOutput(normalized) {
@@ -322,7 +325,7 @@ func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response
 		flusher.Flush()
 	}
 	recordTokenUsage(nil, reqLog.Model, latestUsage)
-	finalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
+	reqlog.FinalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
 }
 
 // ============================================================================
@@ -541,7 +544,7 @@ func handleProviderTest(w http.ResponseWriter, r *http.Request) {
 	result := map[string]any{"durationMs": time.Since(started).Milliseconds(), "model": model}
 	if err != nil {
 		result["ok"] = false
-		result["error"] = truncate(err.Error(), 300)
+		result["error"] = strutil.Truncate(err.Error(), 300)
 		writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: result})
 		return
 	}
@@ -555,7 +558,7 @@ func handleProviderTest(w http.ResponseWriter, r *http.Request) {
 		obj = normalizeOpenAIResponse(obj)
 	}
 	result["ok"] = true
-	if u := parseTokenUsage(obj["usage"]); u.Valid {
+	if u := types.ParseTokenUsage(obj["usage"]); u.Valid {
 		result["inputTokens"] = u.Prompt
 		result["outputTokens"] = u.Completion
 	}

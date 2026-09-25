@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/reqlog"
+	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
 	"context"
 	"crypto/rand"
@@ -754,7 +756,7 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, error) {
 			}
 		}
 		log.Printf("  zen upstream: model=%v stream=%v(下游=%v) msgs=%d via=%s attempt=%d session=%s",
-			bodyParamsModel(params), anonymous, stream, getMsgCount(params), describeZenProxy(), attempt+1, truncate(sess, 30))
+			bodyParamsModel(params), anonymous, stream, getMsgCount(params), describeZenProxy(), attempt+1, strutil.Truncate(sess, 30))
 
 		// 响应头看门狗：黑洞场景（TCP 通、握手/响应头静默丢弃）请求会永久挂起，
 		// 且 callZenAPI 不返回则 markZenFail 不触发、故障转移永远无法激活。
@@ -798,7 +800,7 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, error) {
 		watchCancel()
 		bodyBytes := readAllLimited(resp.Body, 64<<10)
 		resp.Body.Close()
-		reason := fmt.Sprintf("zen API %d: %s", resp.StatusCode, truncate(string(bodyBytes), 500))
+		reason := fmt.Sprintf("zen API %d: %s", resp.StatusCode, strutil.Truncate(string(bodyBytes), 500))
 
 		// 上游 500/502/504 多为瞬时故障，退避重试（503 走限流分支）
 		if resp.StatusCode == 500 || resp.StatusCode == 502 || resp.StatusCode == 504 {
@@ -934,7 +936,7 @@ func collapseZenStreamResponse(resp *http.Response, model string) (*http.Respons
 			}
 		}
 		if chunk.Usage != nil {
-			acc.Usage = mergeTokenUsage(acc.Usage, parseTokenUsage(chunk.Usage))
+			acc.Usage = mergeTokenUsage(acc.Usage, types.ParseTokenUsage(chunk.Usage))
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -1038,7 +1040,7 @@ func describeZenProxy() string {
 		idx = 0
 	}
 	idx %= len(cfg.Proxies)
-	return fmt.Sprintf("proxy[%d]=%s", idx+1, truncate(maskProxyURL(cfg.Proxies[idx]), 60))
+	return fmt.Sprintf("proxy[%d]=%s", idx+1, strutil.Truncate(maskProxyURL(cfg.Proxies[idx]), 60))
 }
 
 // ============ 模型同步 ============
@@ -1236,16 +1238,12 @@ func lastZenModelSync() modelSyncResult {
 
 // opencodeUsageToday 从请求日志聚合今日 opencode 上游用量（后台仪表盘卡片用）。
 func opencodeUsageToday() map[string]any {
-	requestLogsMu.Lock()
-	defer requestLogsMu.Unlock()
-
+	today := time.Now().Format("2006-01-02")
 	var requests int64
 	var input, output, total int64
-	today := time.Now().Format("2006-01-02")
-	for _, e := range requestLogs {
-		if e.Upstream != upstreamOpenCode || e.StartedAt.Format("2006-01-02") != today {
-			continue
-		}
+	for _, e := range reqlog.Filter(func(e types.RequestLog) bool {
+		return e.Upstream == upstreamOpenCode && e.StartedAt.Format("2006-01-02") == today
+	}) {
 		requests++
 		input += e.InputTokens
 		output += e.OutputTokens

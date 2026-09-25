@@ -3,6 +3,9 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/reqlog"
+	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
 	"context"
 	"encoding/json"
@@ -239,7 +242,7 @@ func isFreeModelEntry(m types.Model) bool {
 
 func startProxy(host string, port int) error {
 	p := loadPool()
-	loadRequestLogs()
+	reqlog.LoadRequestLogs()
 	activeCount := 0
 	for _, a := range p.Accounts {
 		if a.Status == "active" {
@@ -405,7 +408,7 @@ func startProxy(host string, port int) error {
 		switch routeModel(model) {
 		case "reject":
 			msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", model)
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
 			writeJSON(w, http.StatusBadRequest, map[string]any{
 				"error": map[string]string{"message": msg, "type": "invalid_request_error"},
 			})
@@ -438,7 +441,7 @@ func startProxy(host string, port int) error {
 					err = fbErr
 				}
 				log.Printf("  api error: %v", err)
-				finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+				reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 				writeJSON(w, http.StatusBadGateway, map[string]any{
 					"error": map[string]string{"message": err.Error(), "type": "api_error"},
 				})
@@ -473,7 +476,7 @@ func startProxy(host string, port int) error {
 		}
 		if err != nil {
 			log.Printf("  api error: %v", err)
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, clineErrorHTTPStatus(err), map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -1088,7 +1091,7 @@ func callClineAPIWithAccount(acc *types.Account, params map[string]any, stream b
 	log.Printf("  upstream: account=%s stream=%v tools=%d msgs=%d max_tokens=%v effort=%v",
 		truncateEmail(acc.Email), stream, toolCount, getMsgCount(params), body["max_tokens"], body["reasoning_effort"])
 
-	resp, err := httpClient.Do(req)
+	resp, err := httpx.Client.Do(req)
 	if err != nil {
 		acc.Status = "cooldown"
 		acc.CooldownUntil = time.Now().Add(5 * time.Minute)
@@ -1103,7 +1106,7 @@ func callClineAPIWithAccount(acc *types.Account, params map[string]any, stream b
 			token = acc.AccessToken
 			req.Header = clineHeaders(token, sessionID)
 			req.Body = io.NopCloser(bytes.NewReader(bodyJSON))
-			resp, err = httpClient.Do(req)
+			resp, err = httpx.Client.Do(req)
 			if err != nil {
 				acc.Status = "cooldown"
 				acc.CooldownUntil = time.Now().Add(5 * time.Minute)
@@ -1139,7 +1142,7 @@ func callClineAPIWithAccount(acc *types.Account, params map[string]any, stream b
 				savePool()
 			}
 		}
-		return nil, acc, &clineAPIError{statusCode: resp.StatusCode, message: truncate(bodyStr, 500)}
+		return nil, acc, &clineAPIError{statusCode: resp.StatusCode, message: strutil.Truncate(bodyStr, 500)}
 	}
 
 	acc.LastUsed = time.Now()
@@ -1232,7 +1235,7 @@ func testAccount(acc *types.Account) accountTestResult {
 	resp, _, err := callClineAPIWithAccount(acc, params, false)
 	if err != nil {
 		result.DurationMs = time.Since(started).Milliseconds()
-		result.Error = truncate(err.Error(), 200)
+		result.Error = strutil.Truncate(err.Error(), 200)
 		return result
 	}
 	defer resp.Body.Close()
@@ -1240,14 +1243,14 @@ func testAccount(acc *types.Account) accountTestResult {
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		result.DurationMs = time.Since(started).Milliseconds()
-		result.Error = "read response: " + truncate(err.Error(), 200)
+		result.Error = "read response: " + strutil.Truncate(err.Error(), 200)
 		return result
 	}
 
 	var obj map[string]any
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		result.DurationMs = time.Since(started).Milliseconds()
-		result.Error = "decode response: " + truncate(err.Error(), 200)
+		result.Error = "decode response: " + strutil.Truncate(err.Error(), 200)
 		return result
 	}
 	if data, ok := obj["data"]; ok {
@@ -1256,7 +1259,7 @@ func testAccount(acc *types.Account) accountTestResult {
 		}
 	}
 	obj = normalizeOpenAIResponse(obj)
-	usage := parseTokenUsage(obj["usage"])
+	usage := types.ParseTokenUsage(obj["usage"])
 
 	result.OK = true
 	result.DurationMs = time.Since(started).Milliseconds()
@@ -1272,73 +1275,6 @@ func testAccount(acc *types.Account) accountTestResult {
 		savePool()
 	}
 	return result
-}
-
-func parseTokenUsage(value any) types.TokenUsage {
-	usage, ok := value.(map[string]any)
-	if !ok {
-		return types.TokenUsage{}
-	}
-	read := func(keys ...string) int64 {
-		for _, key := range keys {
-			if value, ok := usage[key].(float64); ok && value >= 0 {
-				return int64(value)
-			}
-		}
-		return 0
-	}
-	readNested := func(parent string, keys ...string) int64 {
-		details, ok := usage[parent].(map[string]any)
-		if !ok {
-			return 0
-		}
-		for _, key := range keys {
-			if value, ok := details[key].(float64); ok && value >= 0 {
-				return int64(value)
-			}
-		}
-		return 0
-	}
-	prompt := read("prompt_tokens", "input_tokens")
-	completion := read("completion_tokens", "output_tokens")
-	cached := int64(0)
-	if nested := readNested("prompt_tokens_details", "cached_tokens"); nested > 0 {
-		cached = nested
-	} else if nested := readNested("input_tokens_details", "cached_tokens"); nested > 0 {
-		cached = nested
-	} else if v := read("cache_read_input_tokens") + read("cache_creation_input_tokens"); v > 0 {
-		cached = v
-	} else {
-		cached = read("prompt_cache_hit_tokens", "prompt_cache_creation_tokens", "cached_tokens")
-	}
-	total := read("total_tokens")
-	if total == 0 {
-		total = prompt + completion
-	}
-	_, hasUsage := usage["prompt_tokens"]
-	if !hasUsage {
-		_, hasUsage = usage["input_tokens"]
-		if !hasUsage {
-			if _, hasUsage = usage["completion_tokens"]; !hasUsage {
-				if _, hasUsage = usage["output_tokens"]; !hasUsage {
-					_, hasUsage = usage["total_tokens"]
-				}
-			}
-		}
-	}
-	if !hasUsage {
-		_, hasUsage = usage["cache_read_input_tokens"]
-		if !hasUsage {
-			_, hasUsage = usage["cache_creation_input_tokens"]
-			if !hasUsage {
-				_, hasUsage = usage["prompt_tokens_details"]
-				if !hasUsage {
-					_, hasUsage = usage["input_tokens_details"]
-				}
-			}
-		}
-	}
-	return types.TokenUsage{Prompt: prompt, Completion: completion, Total: total, Cached: cached, Valid: hasUsage}
 }
 
 func mergeTokenUsage(current, next types.TokenUsage) types.TokenUsage {
@@ -1523,7 +1459,7 @@ func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *t
 					}
 				}
 				normalized := normalizeOpenAIResponse(obj)
-				if usage := parseTokenUsage(normalized["usage"]); usage.Valid {
+				if usage := types.ParseTokenUsage(normalized["usage"]); usage.Valid {
 					latestUsage = mergeTokenUsage(latestUsage, usage)
 				}
 				if firstOutputAt.IsZero() && hasFirstOutput(normalized) {
@@ -1541,7 +1477,7 @@ func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *t
 		flusher.Flush()
 	}
 	recordTokenUsage(acc, reqLog.Model, latestUsage)
-	finalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
+	reqlog.FinalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
 }
 
 func hasFirstOutput(obj map[string]any) bool {
@@ -1575,7 +1511,7 @@ func hasFirstOutput(obj map[string]any) bool {
 func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *types.Account, reqLog *types.RequestLog) {
 	var raw map[string]any
 	if err := json.NewDecoder(upstream.Body).Decode(&raw); err != nil {
-		finalizeRequestLog(reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+		reqlog.FinalizeRequestLog(reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 		})
@@ -1591,9 +1527,9 @@ func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response, acc
 	}
 
 	out = normalizeOpenAIResponse(out)
-	usage := parseTokenUsage(out["usage"])
+	usage := types.ParseTokenUsage(out["usage"])
 	recordTokenUsage(acc, reqLog.Model, usage)
-	finalizeRequestLog(reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+	reqlog.FinalizeRequestLog(reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 
 	if msg, ok := getNested(out, "choices", 0, "message").(map[string]any); ok {
 		tc, _ := msg["tool_calls"].([]any)
@@ -2034,7 +1970,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	switch routeModel(req.Model) {
 	case "reject":
 		msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", req.Model)
-		finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
+		reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": map[string]string{"message": msg, "type": "invalid_request_error"},
 		})
@@ -2065,16 +2001,16 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 					} else {
 						var raw map[string]any
 						if err := json.NewDecoder(fbResp.Body).Decode(&raw); err != nil {
-							finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+							reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 							writeJSON(w, http.StatusInternalServerError, map[string]any{
 								"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 							})
 							return
 						}
 						out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
-						usage := parseTokenUsage(out2["usage"])
+						usage := types.ParseTokenUsage(out2["usage"])
 						recordTokenUsage(fbAcc, reqLog.Model, usage)
-						finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+						reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 						anthropicResp := openAIToAnthropic(out2)
 						if hasToolUseBlocks(anthropicResp["content"]) {
 							anthropicResp["stop_reason"] = "tool_use"
@@ -2086,7 +2022,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 				err = fbErr
 			}
 			log.Printf("  anthropic api error: %v", err)
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -2098,15 +2034,15 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		} else {
 			var raw map[string]any
 			if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-				finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+				reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 				writeJSON(w, http.StatusInternalServerError, map[string]any{
 					"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 				})
 				return
 			}
 			out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
-			usage := parseTokenUsage(out2["usage"])
-			finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+			usage := types.ParseTokenUsage(out2["usage"])
+			reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 			anthropicResp := openAIToAnthropic(out2)
 			if hasToolUseBlocks(anthropicResp["content"]) {
 				anthropicResp["stop_reason"] = "tool_use"
@@ -2143,7 +2079,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("  anthropic api error: %v", err)
-		finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+		reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 		writeJSON(w, clineErrorHTTPStatus(err), map[string]any{
 			"error": map[string]string{"message": err.Error(), "type": "api_error"},
 		})
@@ -2161,7 +2097,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var raw map[string]any
 		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 			})
@@ -2174,9 +2110,9 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out = normalizeOpenAIResponse(out)
-		usage := parseTokenUsage(out["usage"])
+		usage := types.ParseTokenUsage(out["usage"])
 		recordTokenUsage(acc, reqLog.Model, usage)
-		finalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+		reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 		anthropicResp := openAIToAnthropic(out)
 
 		if hasToolUseBlocks(anthropicResp["content"]) {
@@ -2285,7 +2221,7 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *
 				obj = d
 			}
 		}
-		if usage := parseTokenUsage(obj["usage"]); usage.Valid {
+		if usage := types.ParseTokenUsage(obj["usage"]); usage.Valid {
 			latestUsage = mergeTokenUsage(latestUsage, usage)
 		}
 		if firstOutputAt.IsZero() && hasFirstOutput(obj) {
@@ -2467,7 +2403,7 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *
 		},
 	})
 	recordTokenUsage(acc, reqLog.Model, latestUsage)
-	finalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
+	reqlog.FinalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
 
 	emit("message_stop", map[string]any{"type": "message_stop"})
 	log.Printf("  anthropic stream done: hasText=%v tools=%d reason=%s", hasText, len(pendingTools), stopReason)
@@ -2577,7 +2513,7 @@ func freePort(port int) {
 	conn.Close()
 
 	// Try to kill the process using the port
-	cmd := execCommand("powershell", "-Command",
+	cmd := httpx.ExecCommand("powershell", "-Command",
 		fmt.Sprintf(`$p=Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue; if($p){Stop-Process -Id $p.OwningProcess -Force}`, port))
 	_ = cmd.Run()
 	time.Sleep(500 * time.Millisecond)

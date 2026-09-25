@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
@@ -20,10 +22,10 @@ func (f freeModelRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 
 func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	account := &types.Account{
@@ -38,7 +40,7 @@ func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
 
 	var requestBodies []map[string]any
 	refreshCalls := 0
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		switch req.URL.Path {
 		case "/api/v1/auth/refresh":
 			refreshCalls++
@@ -106,11 +108,11 @@ func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
 func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -133,7 +135,7 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testin
 	var paths []string
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		paths = append(paths, req.URL.Path)
 		switch req.URL.Path {
 		case "/api/v1/auth/refresh":
@@ -196,11 +198,11 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testin
 func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -222,7 +224,7 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		if token == "token-one" {
@@ -272,11 +274,11 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T
 func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -298,7 +300,7 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -359,11 +361,11 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -385,7 +387,7 @@ func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -444,11 +446,11 @@ func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.
 func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -476,7 +478,7 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 
 	var attempts []string
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		attempts = append(attempts, token)
 		body, err := io.ReadAll(req.Body)
@@ -541,11 +543,11 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	account := &types.Account{
@@ -562,7 +564,7 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 	setProxyConfig(defaultProxyConfig())
 
 	var models []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			return nil, err
@@ -604,11 +606,11 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	for _, test := range []struct {
@@ -634,7 +636,7 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 			setProxyConfig(defaultProxyConfig())
 
 			var upstreamModel string
-			httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+			httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 				body, err := io.ReadAll(req.Body)
 				if err != nil {
 					return nil, err
@@ -673,11 +675,11 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	account := &types.Account{
@@ -695,7 +697,7 @@ func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 	setProxyConfig(defaultProxyConfig())
 
 	calls := 0
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		calls++
 		return &http.Response{
 			StatusCode: http.StatusOK,
@@ -754,11 +756,11 @@ func TestPickAccountForModelStrictPreservesStrategy(t *testing.T) {
 func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	for _, model := range []string{"z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash"} {
@@ -774,7 +776,7 @@ func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 			setProxyConfig(defaultProxyConfig())
 
 			var attempted []string
-			httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+			httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 				body, err := io.ReadAll(req.Body)
 				if err != nil {
 					return nil, err
@@ -831,11 +833,11 @@ func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	model := "z-ai/glm-5.3-flash"
@@ -851,7 +853,7 @@ func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 
 	calls := 0
 	var upstreamModel string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		calls++
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
@@ -885,18 +887,13 @@ func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
-	requestLogsMu.Lock()
-	oldLogs := requestLogs
-	requestLogs = nil
-	requestLogsMu.Unlock()
+	oldTransport := httpx.Client.Transport
+	restoreLogs := reqlog.SwapForTest(nil)
+	t.Cleanup(restoreLogs)
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
-		requestLogsMu.Lock()
-		requestLogs = oldLogs
-		requestLogsMu.Unlock()
+		httpx.Client.Transport = oldTransport
 	})
 
 	account := &types.Account{
@@ -910,7 +907,7 @@ func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *te
 	setProxyConfig(defaultProxyConfig())
 
 	calls := 0
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		calls++
 		return &http.Response{
 			StatusCode: http.StatusTooManyRequests,
@@ -930,14 +927,12 @@ func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *te
 		t.Fatalf("upstream calls = %d, want one attempt per model (%d)", calls, len(freeModelChain))
 	}
 
-	requestLogsMu.Lock()
-	defer requestLogsMu.Unlock()
-	if len(requestLogs) != 1 {
-		t.Fatalf("request log count = %d, want 1", len(requestLogs))
+	if reqlog.Len() != 1 {
+		t.Fatalf("request log count = %d, want 1", reqlog.Len())
 	}
 	lastModel := freeModelChain[len(freeModelChain)-1]
-	if requestLogs[0].Model != lastModel {
-		t.Fatalf("request log model = %q, want %q", requestLogs[0].Model, lastModel)
+	if reqlog.At(0).Model != lastModel {
+		t.Fatalf("request log model = %q, want %q", reqlog.At(0).Model, lastModel)
 	}
 }
 
@@ -1002,11 +997,11 @@ func TestIsFreeModelEntry(t *testing.T) {
 func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
 	oldPool := pool
 	oldConfig := getProxyConfig()
-	oldTransport := httpClient.Transport
+	oldTransport := httpx.Client.Transport
 	t.Cleanup(func() {
 		pool = oldPool
 		setProxyConfig(oldConfig)
-		httpClient.Transport = oldTransport
+		httpx.Client.Transport = oldTransport
 	})
 
 	first := &types.Account{
@@ -1030,7 +1025,7 @@ func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
 	setProxyConfig(defaultProxyConfig())
 
 	var chosen []string
-	httpClient.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
+	httpx.Client.Transport = freeModelRoundTripper(func(req *http.Request) (*http.Response, error) {
 		token := strings.TrimPrefix(req.Header.Get("Authorization"), "Bearer ")
 		chosen = append(chosen, token)
 		return &http.Response{
