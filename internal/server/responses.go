@@ -484,6 +484,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 	log.Printf("  responses: model=%s stream=%v", model, isStream)
 
 	reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "responses", Model: model, Stream: isStream}
+	reqLog.APIKeyID = apiKeyIDFromContext(r.Context())
 
 	chat := responsesToChat(params)
 	// 清洗畸形 tool_calls（空 function.name / 孤儿 tool 结果），避免上游 400
@@ -579,7 +580,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 
 	default: // cline
 		reqLog.Upstream = zen.UpstreamCline
-		upResp, acc, err := callClineAPI(chat, isStream)
+		upResp, acc, err := callClineAPI(chat, isStream, &reqLog)
 		if effectiveModel, ok := chat["model"].(string); ok && effectiveModel != "" {
 			reqLog.Model = effectiveModel // 含回退后的实际服务模型
 			if _, isZen := zen.ResolveZenInfo(effectiveModel); isZen {

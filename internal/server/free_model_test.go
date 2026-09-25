@@ -175,7 +175,7 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testin
 		"model":    "free",
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
-	resp, acc, err := callClineAPI(params, false)
+	resp, acc, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("callClineAPI returned error: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T
 		"model":    "free",
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
-	resp, acc, err := callClineAPI(params, false)
+	resp, acc, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("callClineAPI returned error: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 		"model":    "free",
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
-	resp, acc, err := callClineAPI(params, false)
+	resp, acc, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("callClineAPI returned error: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.
 		"model":    "free",
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
-	resp, acc, err := callClineAPI(params, false)
+	resp, acc, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("callClineAPI returned error: %v", err)
 	}
@@ -513,7 +513,7 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 		"model":    "free",
 		"messages": []any{map[string]any{"role": "user", "content": "hello"}},
 	}
-	resp, acc, err := callClineAPI(params, false)
+	resp, acc, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("callClineAPI returned error: %v", err)
 	}
@@ -585,7 +585,7 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 		}, nil
 	})
 
-	firstResp, _, err := callClineAPI(map[string]any{"model": "free"}, false)
+	firstResp, _, err := callClineAPI(map[string]any{"model": "free"}, false, nil)
 	if err != nil {
 		t.Fatalf("first callClineAPI returned error: %v", err)
 	}
@@ -595,7 +595,7 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 	}
 
 	account.ModelCooldowns[freeModelPrimary] = time.Now().Add(-time.Minute)
-	secondResp, _, err := callClineAPI(map[string]any{"model": "free"}, false)
+	secondResp, _, err := callClineAPI(map[string]any{"model": "free"}, false, nil)
 	if err != nil {
 		t.Fatalf("second callClineAPI returned error: %v", err)
 	}
@@ -656,7 +656,7 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 				}, nil
 			})
 
-			resp, _, err := callClineAPI(map[string]any{"model": "free"}, false)
+			resp, _, err := callClineAPI(map[string]any{"model": "free"}, false, nil)
 			if err != nil {
 				t.Fatalf("callClineAPI returned error: %v", err)
 			}
@@ -709,7 +709,7 @@ func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 		}, nil
 	})
 
-	_, _, err := callClineAPI(map[string]any{"model": "free"}, false)
+	_, _, err := callClineAPI(map[string]any{"model": "free"}, false, nil)
 	if err == nil {
 		t.Fatal("callClineAPI should fail when every GLM account is cooling")
 	}
@@ -808,7 +808,7 @@ func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 			})
 
 			params := map[string]any{"model": model}
-			resp, _, err := callClineAPI(params, false)
+			resp, _, err := callClineAPI(params, false, nil)
 			if err != nil {
 				t.Fatalf("expected fallback success, got %v", err)
 			}
@@ -875,7 +875,7 @@ func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 	})
 
 	params := map[string]any{"model": model}
-	_, _, err := callClineAPI(params, false)
+	_, _, err := callClineAPI(params, false, nil)
 	if err == nil {
 		t.Fatal("expected error after exhausting the fallback chain")
 	}
@@ -1039,7 +1039,7 @@ func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
 	})
 
 	for i := 0; i < 3; i++ {
-		resp, _, err := callClineAPI(map[string]any{"model": "free"}, false)
+		resp, _, err := callClineAPI(map[string]any{"model": "free"}, false, nil)
 		if err != nil || resp == nil {
 			t.Fatalf("call %d failed: %v", i+1, err)
 		}

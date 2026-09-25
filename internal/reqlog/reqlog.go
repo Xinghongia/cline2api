@@ -642,3 +642,28 @@ func At(i int) types.RequestLog {
 	}
 	return e
 }
+
+// KeyUsage 返回每个客户端 Key 的累计用量（来自小时桶，key → 汇总）。
+func KeyUsage() map[string]Totals {
+	s := G()
+	if s == nil {
+		return nil
+	}
+	rows, err := s.db.Query(`SELECT api_key_id, COALESCE(SUM(requests),0), COALESCE(SUM(input_tokens),0),
+		COALESCE(SUM(output_tokens),0), COALESCE(SUM(cached_tokens),0), COALESCE(SUM(total_tokens),0)
+		FROM usage_hourly WHERE api_key_id <> '' GROUP BY api_key_id`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := map[string]Totals{}
+	for rows.Next() {
+		var key string
+		var t Totals
+		if err := rows.Scan(&key, &t.Requests, &t.InputTokens, &t.OutputTokens, &t.CachedTokens, &t.TotalTokens); err != nil {
+			continue
+		}
+		out[key] = t
+	}
+	return out
+}

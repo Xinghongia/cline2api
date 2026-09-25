@@ -89,6 +89,9 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/accounts/test", auth(handleAdminAccountTest))
 	mux.HandleFunc("/admin/api/keys", auth(handleAdminGetKeys))
 	mux.HandleFunc("/admin/api/keys/generate", auth(handleAdminGenerateKey))
+	mux.HandleFunc("/admin/api/keys/update", auth(handleAdminUpdateKey))
+	mux.HandleFunc("/admin/api/stats/series", auth(handleStatsSeries))
+	mux.HandleFunc("/admin/api/stats/summary", auth(handleStatsSummary))
 	mux.HandleFunc("/admin/api/keys/delete", auth(handleAdminDeleteKey))
 	mux.HandleFunc("/admin/api/models", auth(handleAdminModels))
 	mux.HandleFunc("/admin/api/models/sync", auth(handleAdminModelSync))
@@ -772,7 +775,7 @@ func handleAdminDeleteAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pool.Mu.Lock()
-	pool.State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}}
+	pool.State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []types.APIKey{}}
 	pool.Mu.Unlock()
 	pool.Save()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "accounts_deleted")})
@@ -861,22 +864,96 @@ func handleAdminAccountTest(w http.ResponseWriter, r *http.Request) {
 }
 func handleAdminGetKeys(w http.ResponseWriter, r *http.Request) {
 	p := pool.Load()
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"keys": p.Keys}})
+	usage := reqlog.KeyUsage()
+	keys := make([]map[string]any, 0, len(p.Keys))
+	pool.Mu.Lock()
+	for _, k := range p.Keys {
+		item := map[string]any{
+			"key": k.Key, "name": k.Name, "enabled": k.Enabled,
+			"createdAt": k.CreatedAt, "lastUsedAt": k.LastUsedAt,
+			"totalRequests": k.TotalRequests,
+		}
+		if u, ok := usage[k.Key]; ok {
+			item["inputTokens"] = u.InputTokens
+			item["outputTokens"] = u.OutputTokens
+			item["cachedTokens"] = u.CachedTokens
+			item["totalTokens"] = u.TotalTokens
+		}
+		keys = append(keys, item)
+	}
+	pool.Mu.Unlock()
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"keys": keys}})
 }
 
-// POST /admin/api/keys/generate
+// POST /admin/api/keys/generate  body: { name? }
 func handleAdminGenerateKey(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	key := fmt.Sprintf("cline_%x_%x", time.Now().UnixMilli(), time.Now().UnixNano()%1000000)
+	var req struct {
+		Name string `json:"name"`
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+	_ = json.Unmarshal(body, &req)
+
+	k := types.APIKey{
+		Key:       fmt.Sprintf("cline_%x_%x", time.Now().UnixMilli(), time.Now().UnixNano()%1000000),
+		Name:      strings.TrimSpace(req.Name),
+		Enabled:   true,
+		CreatedAt: time.Now(),
+	}
 	p := pool.Load()
 	pool.Mu.Lock()
-	p.Keys = append(p.Keys, key)
+	p.Keys = append(p.Keys, k)
 	pool.Mu.Unlock()
 	pool.Save()
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"key": key}})
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"key": k}})
+}
+
+// POST /admin/api/keys/update  body: { key, name?, enabled? }
+func handleAdminUpdateKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+	var req struct {
+		Key     string `json:"key"`
+		Name    *string `json:"name"`
+		Enabled *bool  `json:"enabled"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.Key == "" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_json")})
+		return
+	}
+	p := pool.Load()
+	pool.Mu.Lock()
+	found := false
+	for i := range p.Keys {
+		if p.Keys[i].Key == req.Key {
+			if req.Name != nil {
+				p.Keys[i].Name = strings.TrimSpace(*req.Name)
+			}
+			if req.Enabled != nil {
+				p.Keys[i].Enabled = *req.Enabled
+			}
+			found = true
+			break
+		}
+	}
+	pool.Mu.Unlock()
+	if !found {
+		writeAPI(w, http.StatusNotFound, apiResponse{Error: "key not found"})
+		return
+	}
+	pool.Save()
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "key_updated")})
 }
 
 // POST /admin/api/keys/delete  body: { key }
@@ -901,7 +978,7 @@ func handleAdminDeleteKey(w http.ResponseWriter, r *http.Request) {
 	p := pool.Load()
 	pool.Mu.Lock()
 	for i, k := range p.Keys {
-		if k == req.Key {
+		if k.Key == req.Key {
 			p.Keys = append(p.Keys[:i], p.Keys[i+1:]...)
 			break
 		}
@@ -1780,4 +1857,80 @@ func handleProviderPresets(w http.ResponseWriter, r *http.Request) {
 		out = append(out, presetOut{Key: k, Name: p.Name, BaseURL: p.BaseURL, Headers: p.Headers, Notes: p.Notes, FreeTier: p.FreeTier})
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"presets": out}})
+}
+
+// GET /admin/api/stats/series?bucket=hour|day&group=total|model|upstream|key&from&to&model&upstream&key
+// 从小时桶聚合出时间序列（Dashboard 图表用）。from/to 为 Unix 秒。
+func handleStatsSeries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	q := r.URL.Query()
+	now := time.Now()
+	from := now.Add(-24 * time.Hour)
+	to := now.Add(time.Minute)
+	if v := q.Get("from"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			from = time.Unix(n, 0)
+		}
+	}
+	if v := q.Get("to"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			to = time.Unix(n, 0)
+		}
+	}
+	filter := &reqlog.LogFilter{
+		Model:    q.Get("model"),
+		Upstream: q.Get("upstream"),
+		Key:      q.Get("key"),
+	}
+	groups, err := reqlog.SeriesQuery(q.Get("bucket"), q.Get("group"), from, to, filter)
+	if err != nil {
+		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
+		return
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
+		"bucket": q.Get("bucket"),
+		"from":   from.Unix(),
+		"to":     to.Unix(),
+		"groups": groups,
+	}})
+}
+
+// GET /admin/api/stats/summary?range=24h|7d|30d&upstream=&model=&key=
+// 返回时间范围内的总量汇总 + 模型 Top + 上游分布 + Key Top。
+func handleStatsSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	q := r.URL.Query()
+	now := time.Now()
+	var from time.Time
+	switch q.Get("range") {
+	case "7d":
+		from = now.Add(-7 * 24 * time.Hour)
+	case "30d":
+		from = now.Add(-30 * 24 * time.Hour)
+	default:
+		from = now.Add(-24 * time.Hour)
+	}
+	filter := &reqlog.LogFilter{
+		Model:    q.Get("model"),
+		Upstream: q.Get("upstream"),
+		Key:      q.Get("key"),
+	}
+	totals, models, upstreams, keys, err := reqlog.SummaryQuery(from, now.Add(time.Minute), filter)
+	if err != nil {
+		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
+		return
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
+		"range":     q.Get("range"),
+		"totals":    totals,
+		"topModels": models,
+		"upstreams": upstreams,
+		"topKeys":   keys,
+	}})
 }

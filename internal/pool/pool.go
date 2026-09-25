@@ -33,13 +33,13 @@ func Load() *types.AccountPool {
 
 	data, err := os.ReadFile(Path)
 	if err != nil {
-		State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}, Models: []types.Model{}}
+		State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []types.APIKey{}, Models: []types.Model{}}
 		return State
 	}
 
 	var p types.AccountPool
 	if err := json.Unmarshal(data, &p); err != nil {
-		State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}, Models: []types.Model{}}
+		State = &types.AccountPool{Accounts: []*types.Account{}, Keys: []types.APIKey{}, Models: []types.Model{}}
 		return State
 	}
 
@@ -47,7 +47,7 @@ func Load() *types.AccountPool {
 		p.Accounts = []*types.Account{}
 	}
 	if p.Keys == nil {
-		p.Keys = []string{}
+		p.Keys = []types.APIKey{}
 	}
 	if p.Models == nil {
 		p.Models = []types.Model{}

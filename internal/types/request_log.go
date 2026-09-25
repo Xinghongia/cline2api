@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type RequestLog struct {
 	ID           string    `json:"id"`
@@ -38,4 +41,26 @@ type TokenUsage struct {
 	Total      int64
 	Cached     int64
 	Valid      bool
+}
+
+// APIKey 是带元数据的客户端密钥。
+// UnmarshalJSON 兼容两种历史格式：纯字符串（旧版 []string 池文件）与完整对象。
+type APIKey struct {
+	Key           string    `json:"key"`
+	Name          string    `json:"name,omitempty"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"createdAt,omitempty"`
+	LastUsedAt    time.Time `json:"lastUsedAt,omitempty"`
+	TotalRequests int64     `json:"totalRequests,omitempty"`
+}
+
+func (k *APIKey) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		k.Key = s
+		k.Enabled = true // 旧格式密钥默认启用
+		return nil
+	}
+	type alias APIKey
+	return json.Unmarshal(b, (*alias)(k))
 }

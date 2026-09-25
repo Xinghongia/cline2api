@@ -286,7 +286,7 @@ func StartProxy(host string, port int) error {
 
 	apiKeyHandler := func(next http.HandlerFunc) http.HandlerFunc {
 		return corsHandler(func(w http.ResponseWriter, r *http.Request) {
-			// Allow requests without key if no keys configured
+			// 未配置任何 Key 时开放访问
 			p := pool.Load()
 			if len(p.Keys) == 0 {
 				next(w, r)
@@ -300,15 +300,19 @@ func StartProxy(host string, port int) error {
 				}
 			}
 
-			valid := false
-			for _, k := range p.Keys {
-				if k == key {
-					valid = true
+			var matched types.APIKey
+			found := false
+			pool.Mu.Lock()
+			for i := range p.Keys {
+				if p.Keys[i].Key == key {
+					matched = p.Keys[i]
+					found = true
 					break
 				}
 			}
+			pool.Mu.Unlock()
 
-			if !valid {
+			if !found || !matched.Enabled {
 				writeJSON(w, http.StatusUnauthorized, map[string]any{
 					"error": map[string]string{
 						"message": "invalid API key. Generate one at /admin/ or set x-api-key header",
@@ -317,7 +321,20 @@ func StartProxy(host string, port int) error {
 				})
 				return
 			}
-			next(w, r)
+
+			// 记录使用统计（立即落盘：请求频率低，写放大可接受）
+			pool.Mu.Lock()
+			for i := range p.Keys {
+				if p.Keys[i].Key == matched.Key {
+					p.Keys[i].LastUsedAt = time.Now()
+					p.Keys[i].TotalRequests++
+					break
+				}
+			}
+			pool.Mu.Unlock()
+			pool.Save()
+
+			next(w, r.WithContext(context.WithValue(r.Context(), apiKeyCtxKey{}, matched.Key)))
 		})
 	}
 
@@ -378,6 +395,7 @@ func StartProxy(host string, port int) error {
 		log.Printf("  client: stream=%v tools=%d model=%s", isStream, toolCount, model)
 
 		reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "openai", Model: model, Stream: isStream}
+	reqLog.APIKeyID = apiKeyIDFromContext(r.Context())
 
 		// Override system prompt from override.md for OpenAI format
 		if override := loadOverrideContent(); override != "" {
@@ -461,7 +479,7 @@ func StartProxy(host string, port int) error {
 			return
 		}
 
-		resp, acc, err := callClineAPI(params, isStream)
+		resp, acc, err := callClineAPI(params, isStream, &reqLog)
 		if effectiveModel, ok := params["model"].(string); ok && effectiveModel != "" {
 			reqLog.Model = effectiveModel // 含回退后的实际服务模型
 			if _, isZen := zen.ResolveZenInfo(effectiveModel); isZen {
@@ -691,7 +709,7 @@ func clineErrorHTTPStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-func callClineAPI(params map[string]any, stream bool) (*http.Response, *types.Account, error) {
+func callClineAPI(params map[string]any, stream bool, rl *types.RequestLog) (*http.Response, *types.Account, error) {
 	model, _ := params["model"].(string)
 	if model == "free" {
 		resp, acc, err := callFreeClineAPI(params, stream)
@@ -728,7 +746,7 @@ func callClineAPI(params map[string]any, stream bool) (*http.Response, *types.Ac
 	}
 	for _, m := range chain {
 		// 先试自定义 provider
-		if pResp, pErr, attempted := callCustomProviderAPI(withModel(params, m), stream); attempted {
+		if pResp, pErr, attempted := callCustomProviderAPI(withModel(params, m), stream, rl); attempted {
 			if pErr == nil {
 				if m != model {
 					log.Printf("  model fallback: %q unavailable, serving via provider %q", model, m)
@@ -1817,6 +1835,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	log.Printf("  anthropic: model=%s stream=%v msgs=%d", req.Model, req.Stream, len(req.Messages))
 
 	reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "anthropic", Model: req.Model, Stream: req.Stream}
+	reqLog.APIKeyID = apiKeyIDFromContext(r.Context())
 
 	// 按 model 自动分流（与 chat 端点一致）：zen 免费/付费拒绝/Cline 池
 	switch zen.RouteModel(req.Model) {
@@ -1922,7 +1941,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, acc, err := callClineAPI(openAIReq, req.Stream)
+	resp, acc, err := callClineAPI(openAIReq, req.Stream, &reqLog)
 	if effectiveModel, ok := openAIReq["model"].(string); ok && effectiveModel != "" {
 		reqLog.Model = effectiveModel // 含回退后的实际服务模型
 		if _, isZen := zen.ResolveZenInfo(effectiveModel); isZen {
@@ -2505,7 +2524,7 @@ func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response
 // Provider 预设（市面常见免费/低成本 OpenAI 兼容上游）
 // ============================================================================
 
-func callCustomProviderAPI(params map[string]any, stream bool) (*http.Response, error, bool) {
+func callCustomProviderAPI(params map[string]any, stream bool, rl *types.RequestLog) (*http.Response, error, bool) {
 	model, _ := params["model"].(string)
 	p := providers.ResolveProviderForModel(model)
 	if p == nil {
@@ -2515,5 +2534,16 @@ func callCustomProviderAPI(params map[string]any, stream bool) (*http.Response, 
 	if err != nil {
 		return nil, err, true
 	}
+	if rl != nil {
+		rl.ProviderID = p.ID
+	}
 	return resp, nil, true
+}
+
+// apiKeyCtxKey 携带通过鉴权的客户端 API Key（供请求日志归因）。
+type apiKeyCtxKey struct{}
+
+func apiKeyIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(apiKeyCtxKey{}).(string)
+	return v
 }

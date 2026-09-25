@@ -71,7 +71,7 @@ func TestCustomProviderServesModel(t *testing.T) {
 	})
 
 	params := map[string]any{"model": "custom-model-1", "max_tokens": 16, "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
-	resp, acc, err := callClineAPI(params, false)
+	resp, acc, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("expected provider success, got %v", err)
 	}
@@ -130,7 +130,7 @@ func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 	defer providers.SetProviderCooldown("prov_test2", "z-ai/glm-5.3-flash", time.Time{})
 
 	params := map[string]any{"model": "z-ai/glm-5.3-flash", "max_tokens": 16, "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
-	resp, _, err := callClineAPI(params, false)
+	resp, _, err := callClineAPI(params, false, nil)
 	if err != nil {
 		t.Fatalf("expected fallback success, got %v", err)
 	}
