@@ -1,4 +1,4 @@
-package main
+package chatmsg
 
 import (
 	"encoding/json"
@@ -24,7 +24,7 @@ func TestSanitizeMessagesDropsEmptyNameToolCalls(t *testing.T) {
 		]},
 		{"role":"tool","tool_call_id":"a1","content":"ok"}
 	]`)
-	out := sanitizeMessages(in)
+	out := SanitizeMessages(in)
 	if len(out) != 3 {
 		t.Fatalf("want 3 msgs, got %d", len(out))
 	}
@@ -45,7 +45,7 @@ func TestSanitizeMessagesRemovesEmptyToolCallsField(t *testing.T) {
 			{"id":"a2","type":"function","function":{"name":"","arguments":"{}"}}
 		]}
 	]`)
-	out := sanitizeMessages(in)
+	out := SanitizeMessages(in)
 	if len(out) != 1 {
 		t.Fatalf("want 1 msg, got %d", len(out))
 	}
@@ -61,7 +61,7 @@ func TestSanitizeMessagesDropsOrphanToolResults(t *testing.T) {
 		{"role":"tool","tool_call_id":"ghost","content":"orphan result"},
 		{"role":"tool","tool_call_id":"","content":"no id"}
 	]`)
-	out := sanitizeMessages(in)
+	out := SanitizeMessages(in)
 	if len(out) != 1 {
 		t.Fatalf("want only user msg, got %d msgs: %v", len(out), out)
 	}
@@ -75,7 +75,7 @@ func TestSanitizeMessagesKeepsValidHistory(t *testing.T) {
 		{"role":"assistant","tool_calls":[{"id":"a1","type":"function","function":{"name":"Read","arguments":"{}"}}]},
 		{"role":"tool","tool_call_id":"a1","content":"data"}
 	]`)
-	out := sanitizeMessages(in)
+	out := SanitizeMessages(in)
 	if len(out) != 4 {
 		t.Fatalf("valid history should be untouched, got %d msgs", len(out))
 	}

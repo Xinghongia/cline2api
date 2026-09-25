@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cline-go-proxy/internal/chatmsg"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
 	"encoding/json"
@@ -486,7 +487,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 	chat := responsesToChat(params)
 	// 清洗畸形 tool_calls（空 function.name / 孤儿 tool 结果），避免上游 400
 	if msgs, ok := chat["messages"].([]any); ok {
-		chat["messages"] = sanitizeMessages(msgs)
+		chat["messages"] = chatmsg.SanitizeMessages(msgs)
 	}
 	chatModel, _ := chat["model"].(string)
 	route := routeModel(chatModel)

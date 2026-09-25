@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/chatmsg"
 	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/randx"
@@ -639,7 +640,7 @@ func anonymousToolset(names []string) []any {
 // 匿名免费层只接受 agent 形态的流式请求：强制 stream:true + include_usage + 注入核心工具。
 func buildZenBody(params map[string]any, stream bool, anonymous bool) map[string]any {
 	body := map[string]any{}
-	for _, key := range passThroughKeys {
+	for _, key := range chatmsg.PassThroughKeys {
 		if val, ok := params[key]; ok {
 			body[key] = val
 		}
@@ -652,7 +653,7 @@ func buildZenBody(params map[string]any, stream bool, anonymous bool) map[string
 	// messages 需先清洗畸形 tool_calls 再透传
 	if msgsRaw, ok := params["messages"]; ok {
 		if msgsArr, ok := msgsRaw.([]any); ok {
-			body["messages"] = sanitizeMessages(msgsArr)
+			body["messages"] = chatmsg.SanitizeMessages(msgsArr)
 		} else {
 			body["messages"] = msgsRaw
 		}
@@ -746,7 +747,7 @@ func callZenAPI(params map[string]any, stream bool) (*http.Response, error) {
 			}
 		}
 		log.Printf("  zen upstream: model=%v stream=%v(下游=%v) msgs=%d via=%s attempt=%d session=%s",
-			bodyParamsModel(params), anonymous, stream, getMsgCount(params), describeZenProxy(), attempt+1, strutil.Truncate(sess, 30))
+			bodyParamsModel(params), anonymous, stream, chatmsg.MsgCount(params), describeZenProxy(), attempt+1, strutil.Truncate(sess, 30))
 
 		// 响应头看门狗：黑洞场景（TCP 通、握手/响应头静默丢弃）请求会永久挂起，
 		// 且 callZenAPI 不返回则 markZenFail 不触发、故障转移永远无法激活。

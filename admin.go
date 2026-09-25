@@ -3,6 +3,7 @@ package main
 import (
 	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/providers"
 	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
@@ -15,6 +16,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1597,4 +1599,163 @@ func handleAdminModelSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: res, Message: tAPI(r, "model_sync_done")})
+}
+
+// ============================================================================
+// Admin API handlers
+// ============================================================================
+
+func handleProvidersList(w http.ResponseWriter, r *http.Request) {
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"providers": providers.ListProviders()}})
+}
+
+func handleProviderSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+	var p providers.CustomProvider
+	if err := json.Unmarshal(body, &p); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid_json"})
+		return
+	}
+	p.Name = strings.TrimSpace(p.Name)
+	p.BaseURL = strings.TrimSpace(strings.TrimRight(p.BaseURL, "/"))
+	p.APIKey = strings.TrimSpace(p.APIKey)
+	if p.Name == "" || p.BaseURL == "" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "name and baseURL are required"})
+		return
+	}
+	if !strings.HasPrefix(p.BaseURL, "http://") && !strings.HasPrefix(p.BaseURL, "https://") {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "baseURL must start with http:// or https://"})
+		return
+	}
+	// 清洗模型 ID 与请求头
+	var models []string
+	seen := map[string]bool{}
+	for _, m := range p.ModelIDs {
+		m = strings.TrimSpace(m)
+		if m != "" && !seen[m] {
+			seen[m] = true
+			models = append(models, m)
+		}
+	}
+	p.ModelIDs = models
+	hdrs := map[string]string{}
+	for k, v := range p.Headers {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			hdrs[k] = strings.TrimSpace(v)
+		}
+	}
+	p.Headers = hdrs
+	if p.TimeoutSec < 0 || p.TimeoutSec > 600 {
+		p.TimeoutSec = 0
+	}
+	saved := providers.UpsertProvider(&p)
+	log.Printf("admin: provider saved name=%s models=%d enabled=%v", saved.Name, len(saved.ModelIDs), saved.Enabled)
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"provider": saved}})
+}
+
+func handleProviderDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid_json"})
+		return
+	}
+	if !providers.DeleteProvider(req.ID) {
+		writeAPI(w, http.StatusNotFound, apiResponse{Error: "provider not found"})
+		return
+	}
+	log.Printf("admin: provider deleted id=%s", req.ID)
+	writeAPI(w, http.StatusOK, apiResponse{Success: true})
+}
+
+// handleProviderTest 发一条 min-token 请求验证 provider 可用性。
+func handleProviderTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	var req struct {
+		ID    string `json:"id"`
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: "invalid_json"})
+		return
+	}
+	prov, ok := providers.GetProviderByID(req.ID)
+	if !ok {
+		writeAPI(w, http.StatusNotFound, apiResponse{Error: "provider not found"})
+		return
+	}
+	target := &prov
+	model := strings.TrimSpace(req.Model)
+	if model == "" && len(target.ModelIDs) > 0 {
+		model = target.ModelIDs[0]
+	}
+	params := map[string]any{
+		"model":      model,
+		"max_tokens": 16,
+		"messages":   []any{map[string]any{"role": "user", "content": "hi"}},
+	}
+	started := time.Now()
+	resp, err := callProvider(target, params, false)
+	result := map[string]any{"durationMs": time.Since(started).Milliseconds(), "model": model}
+	if err != nil {
+		result["ok"] = false
+		result["error"] = strutil.Truncate(err.Error(), 300)
+		writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: result})
+		return
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	var obj map[string]any
+	if json.Unmarshal(raw, &obj) == nil {
+		if data, ok := obj["data"].(map[string]any); ok {
+			obj = data
+		}
+		obj = normalizeOpenAIResponse(obj)
+	}
+	result["ok"] = true
+	if u := types.ParseTokenUsage(obj["usage"]); u.Valid {
+		result["inputTokens"] = u.Prompt
+		result["outputTokens"] = u.Completion
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: result})
+}
+
+func handleProviderPresets(w http.ResponseWriter, r *http.Request) {
+	type presetOut struct {
+		Key      string            `json:"key"`
+		Name     string            `json:"name"`
+		BaseURL  string            `json:"baseURL"`
+		Headers  map[string]string `json:"headers"`
+		Notes    string            `json:"notes"`
+		FreeTier bool              `json:"freeTier"`
+	}
+	keys := make([]string, 0, len(providers.ProviderPresets))
+	for k := range providers.ProviderPresets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]presetOut, 0, len(keys))
+	for _, k := range keys {
+		p := providers.ProviderPresets[k]
+		out = append(out, presetOut{Key: k, Name: p.Name, BaseURL: p.BaseURL, Headers: p.Headers, Notes: p.Notes, FreeTier: p.FreeTier})
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"presets": out}})
 }

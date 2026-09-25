@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/chatmsg"
 	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/types"
@@ -605,10 +606,10 @@ func TestBuildUpstreamBodyClampsMaxTokens(t *testing.T) {
 		params map[string]any
 		want   int
 	}{
-		{"absent", map[string]any{"model": "m1"}, defaultMaxTokens},
-		{"zero", map[string]any{"model": "m1", "max_tokens": float64(0)}, defaultMaxTokens},
-		{"tiny", map[string]any{"model": "m1", "max_tokens": float64(8)}, defaultMaxTokens},
-		{"completion-tiny", map[string]any{"model": "m1", "max_completion_tokens": float64(8)}, defaultMaxTokens},
+		{"absent", map[string]any{"model": "m1"}, chatmsg.DefaultMaxTokens},
+		{"zero", map[string]any{"model": "m1", "max_tokens": float64(0)}, chatmsg.DefaultMaxTokens},
+		{"tiny", map[string]any{"model": "m1", "max_tokens": float64(8)}, chatmsg.DefaultMaxTokens},
+		{"completion-tiny", map[string]any{"model": "m1", "max_completion_tokens": float64(8)}, chatmsg.DefaultMaxTokens},
 		{"boundary-16", map[string]any{"model": "m1", "max_tokens": float64(16)}, 16},
 		{"normal", map[string]any{"model": "m1", "max_tokens": float64(1024)}, 1024},
 	}

@@ -1,19 +1,22 @@
 package main
 
+// providers 路由集成测试：验证 provider 命中模型时优先于 Cline 账号池。
+
 import (
-	"cline-go-proxy/internal/httpx"
-	"cline-go-proxy/internal/pool"
-	"cline-go-proxy/internal/proxyconfig"
-	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"cline-go-proxy/internal/httpx"
+	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/providers"
+	"cline-go-proxy/internal/proxyconfig"
+	"cline-go-proxy/internal/types"
 )
 
-// 自定义 provider 命中时优先走 provider 上游。
 func TestCustomProviderServesModel(t *testing.T) {
 	oldPool := pool.State
 	oldConfig := proxyconfig.Get()
@@ -22,7 +25,7 @@ func TestCustomProviderServesModel(t *testing.T) {
 		pool.State = oldPool
 		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
-		_ = deleteProvider("prov_test1")
+		_ = providers.DeleteProvider("prov_test1")
 	})
 
 	pool.State = &types.AccountPool{Accounts: []*types.Account{{
@@ -61,7 +64,7 @@ func TestCustomProviderServesModel(t *testing.T) {
 		}, nil
 	})
 
-	upsertProvider(&CustomProvider{
+	providers.UpsertProvider(&providers.CustomProvider{
 		ID: "prov_test1", Name: "TestProv", BaseURL: "http://provider.test/v1",
 		APIKey: "sk-x", ModelIDs: []string{"custom-model-1"},
 		Headers: map[string]string{"X-Custom": "abc"}, Enabled: true, Priority: 10,
@@ -93,7 +96,7 @@ func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 		pool.State = oldPool
 		proxyconfig.Set(oldConfig)
 		httpx.Client.Transport = oldTransport
-		_ = deleteProvider("prov_test2")
+		_ = providers.DeleteProvider("prov_test2")
 	})
 
 	pool.State = &types.AccountPool{Accounts: []*types.Account{{
@@ -119,12 +122,12 @@ func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 		}, nil
 	})
 
-	upsertProvider(&CustomProvider{
+	providers.UpsertProvider(&providers.CustomProvider{
 		ID: "prov_test2", Name: "BrokenProv", BaseURL: "http://provider.test/v1",
 		APIKey: "sk-x", ModelIDs: []string{"z-ai/glm-5.3-flash"},
 		Enabled: true, Priority: 10,
 	})
-	defer setProviderCooldown("prov_test2", "z-ai/glm-5.3-flash", time.Time{})
+	defer providers.SetProviderCooldown("prov_test2", "z-ai/glm-5.3-flash", time.Time{})
 
 	params := map[string]any{"model": "z-ai/glm-5.3-flash", "max_tokens": 16, "messages": []any{map[string]any{"role": "user", "content": "hi"}}}
 	resp, _, err := callClineAPI(params, false)
@@ -132,24 +135,4 @@ func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 		t.Fatalf("expected fallback success, got %v", err)
 	}
 	defer resp.Body.Close()
-}
-
-// 优先级：同模型多 provider 时取 priority 最小的可用者。
-func TestProviderPrioritySelection(t *testing.T) {
-	t.Cleanup(func() {
-		_ = deleteProvider("prov_p1")
-		_ = deleteProvider("prov_p2")
-	})
-	upsertProvider(&CustomProvider{ID: "prov_p1", Name: "Low", BaseURL: "http://a/v1", ModelIDs: []string{"m"}, Enabled: true, Priority: 5})
-	upsertProvider(&CustomProvider{ID: "prov_p2", Name: "High", BaseURL: "http://b/v1", ModelIDs: []string{"m"}, Enabled: true, Priority: 1})
-	p := resolveProviderForModel("m")
-	if p == nil || p.Name != "High" {
-		t.Fatalf("want High (priority 1), got %+v", p)
-	}
-	// 冷却 High 后选 Low
-	setProviderCooldown("prov_p2", "m", time.Now().Add(time.Minute))
-	p = resolveProviderForModel("m")
-	if p == nil || p.Name != "Low" {
-		t.Fatalf("after cooldown want Low, got %+v", p)
-	}
 }

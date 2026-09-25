@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/chatmsg"
 	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/httpx"
 	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/providers"
 	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
@@ -28,17 +30,12 @@ import (
 )
 
 const (
-	defaultMaxTokens       = 128000
 	defaultReasoningEffort = "high"
 	fallbackDefaultModel   = "z-ai/glm-5.3-flash"
 	freeModelPrimary       = "z-ai/glm-5.3-flash"
 	freeModelFallback      = "deepseek/deepseek-v4-flash"
 	freeModelLastResort    = "cline-free/longcat-2.0"
 )
-
-// minUpstreamMaxTokens 上游对输出 token 的硬下限：Cline 免费模型经 OpenRouter
-// 转发时（如 meta/muse-spark），max_output_tokens < 16 会被上游直接 400。
-const minUpstreamMaxTokens = 16
 
 // freeModelChain 是 model="free" 时的降级顺序。
 // 顺序依据 Artificial Analysis Intelligence Index v4.1.1：
@@ -212,13 +209,6 @@ func isLoopbackHost(host string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
-}
-
-var passThroughKeys = []string{
-	"tools", "tool_choice", "parallel_tool_calls", "functions", "function_call",
-	"temperature", "top_p", "top_k", "stop", "presence_penalty", "frequency_penalty",
-	"response_format", "user", "n", "logit_bias", "seed", "logprobs", "top_logprobs",
-	"stream_options", "metadata",
 }
 
 type chatRequest struct {
@@ -587,122 +577,10 @@ func writeJSON(w http.ResponseWriter, status int, data any) {
 	json.NewEncoder(w).Encode(data)
 }
 
-func cleanMessages(messages []any) []any {
-	cleaned := make([]any, 0, len(messages))
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			cleaned = append(cleaned, m)
-			continue
-		}
-		cleaned = append(cleaned, msg)
-	}
-	return cleaned
-}
-
-// sanitizeMessages 修复出站消息历史中的畸形 tool_calls。
-// 背景：上游偶发输出 function.name 为空的 tool call（GLM 流式分片丢失 / 工具调用
-// 以文本形式泄漏），客户端执行后会把残缺记录回放进下一轮历史，导致上游恒定 400：
-// "tool_calls[N].function.name must be a non-empty string"。
-// 处理：
-//  1. 丢弃 function.name 为空的 tool_call；
-//  2. 过滤后 tool_calls 为空则移除该字段；
-//  3. 丢弃没有对应合法 assistant tool_call 的孤儿 tool 结果（自愈被污染的会话）。
-func sanitizeMessages(messages []any) []any {
-	validToolIDs := make(map[string]bool)
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok || msg["role"] != "assistant" {
-			continue
-		}
-		tcs, ok := msg["tool_calls"].([]any)
-		if !ok {
-			continue
-		}
-		for _, tc := range tcs {
-			tcMap, ok := tc.(map[string]any)
-			if !ok {
-				continue
-			}
-			fn, _ := tcMap["function"].(map[string]any)
-			name, _ := fn["name"].(string)
-			id, _ := tcMap["id"].(string)
-			if name != "" && id != "" {
-				validToolIDs[id] = true
-			}
-		}
-	}
-
-	cleaned := make([]any, 0, len(messages))
-	for _, m := range messages {
-		msg, ok := m.(map[string]any)
-		if !ok {
-			cleaned = append(cleaned, m)
-			continue
-		}
-		role, _ := msg["role"].(string)
-
-		// 孤儿 tool 结果：找不到对应的 assistant tool_call
-		if role == "tool" {
-			id, _ := msg["tool_call_id"].(string)
-			if !validToolIDs[id] {
-				continue
-			}
-			cleaned = append(cleaned, msg)
-			continue
-		}
-
-		// assistant 消息：剔除空名 tool_call
-		if role == "assistant" {
-			if tcs, ok := msg["tool_calls"].([]any); ok {
-				kept := make([]any, 0, len(tcs))
-				for _, tc := range tcs {
-					tcMap, ok := tc.(map[string]any)
-					if !ok {
-						continue
-					}
-					fn, _ := tcMap["function"].(map[string]any)
-					name, _ := fn["name"].(string)
-					if name == "" {
-						continue
-					}
-					kept = append(kept, tcMap)
-				}
-				if len(kept) == 0 {
-					delete(msg, "tool_calls")
-				} else {
-					msg["tool_calls"] = kept
-				}
-			}
-		}
-		cleaned = append(cleaned, msg)
-	}
-	return cleaned
-}
-
-// genToolUseID 生成 tool_use 块 id（上游未返回 id 时的兜底）。
-func genToolUseID() string {
-	return fmt.Sprintf("toolu_%x", time.Now().UnixNano())
-}
-
-// hasToolUseBlocks 判断 Anthropic content 块数组中是否含有有效的 tool_use 块。
-func hasToolUseBlocks(content any) bool {
-	blocks, ok := content.([]any)
-	if !ok {
-		return false
-	}
-	for _, b := range blocks {
-		if bm, ok := b.(map[string]any); ok && bm["type"] == "tool_use" {
-			return true
-		}
-	}
-	return false
-}
-
 func buildUpstreamBody(params map[string]any, stream bool) map[string]any {
 	sessionID := fmt.Sprintf("sess_%d", time.Now().UnixMilli())
 
-	maxTokens := defaultMaxTokens
+	maxTokens := chatmsg.DefaultMaxTokens
 	source := ""
 	if mt, ok := params["max_tokens"].(float64); ok {
 		maxTokens, source = int(mt), "max_tokens"
@@ -711,11 +589,11 @@ func buildUpstreamBody(params map[string]any, stream bool) map[string]any {
 	}
 	// 客户端发的 0 视为未设置、1~15 低于上游硬下限：一律兜到默认值，
 	// 否则 muse-spark 等模型直接 400 且错误会被回退链吞掉
-	if maxTokens < minUpstreamMaxTokens {
+	if maxTokens < chatmsg.MinUpstreamMaxTokens {
 		if source != "" {
-			log.Printf("  clamp %s=%d -> %d (upstream requires >= %d)", source, maxTokens, defaultMaxTokens, minUpstreamMaxTokens)
+			log.Printf("  clamp %s=%d -> %d (upstream requires >= %d)", source, maxTokens, chatmsg.DefaultMaxTokens, chatmsg.MinUpstreamMaxTokens)
 		}
-		maxTokens = defaultMaxTokens
+		maxTokens = chatmsg.DefaultMaxTokens
 	}
 
 	model := getDefaultModel()
@@ -732,7 +610,7 @@ func buildUpstreamBody(params map[string]any, stream bool) map[string]any {
 
 	if msgsRaw, ok := params["messages"]; ok {
 		if msgsArr, ok := msgsRaw.([]any); ok {
-			body["messages"] = sanitizeMessages(msgsArr)
+			body["messages"] = chatmsg.SanitizeMessages(msgsArr)
 		} else {
 			body["messages"] = msgsRaw
 		}
@@ -753,7 +631,7 @@ func buildUpstreamBody(params map[string]any, stream bool) map[string]any {
 		delete(body, "reasoning_effort")
 	}
 
-	for _, key := range passThroughKeys {
+	for _, key := range chatmsg.PassThroughKeys {
 		if val, ok := params[key]; ok {
 			body[key] = val
 		}
@@ -1092,7 +970,7 @@ func callClineAPIWithAccount(acc *types.Account, params map[string]any, stream b
 		}
 	}
 	log.Printf("  upstream: account=%s stream=%v tools=%d msgs=%d max_tokens=%v effort=%v",
-		truncateEmail(acc.Email), stream, toolCount, getMsgCount(params), body["max_tokens"], body["reasoning_effort"])
+		truncateEmail(acc.Email), stream, toolCount, chatmsg.MsgCount(params), body["max_tokens"], body["reasoning_effort"])
 
 	resp, err := httpx.Client.Do(req)
 	if err != nil {
@@ -1401,13 +1279,6 @@ func splitEmail(email string) []string {
 		}
 	}
 	return []string{email}
-}
-
-func getMsgCount(params map[string]any) int {
-	if msgs, ok := params["messages"].([]any); ok {
-		return len(msgs)
-	}
-	return 0
 }
 
 func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *types.Account, reqLog *types.RequestLog) {
@@ -1725,7 +1596,7 @@ func anthropicToOpenAI(req anthropicReq) map[string]any {
 						}
 						id, _ := b["id"].(string)
 						if id == "" {
-							id = genToolUseID()
+							id = chatmsg.GenToolUseID()
 						}
 						tc := map[string]any{
 							"id":   id,
@@ -1850,7 +1721,7 @@ func openAIToAnthropic(openAI map[string]any) map[string]any {
 					}
 					id, _ := tcMap["id"].(string)
 					if id == "" {
-						id = genToolUseID()
+						id = chatmsg.GenToolUseID()
 					}
 					block := map[string]any{
 						"type":  "tool_use",
@@ -1960,7 +1831,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.MaxTokens == 0 {
-		req.MaxTokens = defaultMaxTokens
+		req.MaxTokens = chatmsg.DefaultMaxTokens
 	}
 
 	openAIReq := anthropicToOpenAI(req)
@@ -2015,7 +1886,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 						recordTokenUsage(fbAcc, reqLog.Model, usage)
 						reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 						anthropicResp := openAIToAnthropic(out2)
-						if hasToolUseBlocks(anthropicResp["content"]) {
+						if chatmsg.HasToolUseBlocks(anthropicResp["content"]) {
 							anthropicResp["stop_reason"] = "tool_use"
 						}
 						writeJSON(w, http.StatusOK, anthropicResp)
@@ -2047,7 +1918,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 			usage := types.ParseTokenUsage(out2["usage"])
 			reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 			anthropicResp := openAIToAnthropic(out2)
-			if hasToolUseBlocks(anthropicResp["content"]) {
+			if chatmsg.HasToolUseBlocks(anthropicResp["content"]) {
 				anthropicResp["stop_reason"] = "tool_use"
 			}
 			writeJSON(w, http.StatusOK, anthropicResp)
@@ -2118,7 +1989,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
 		anthropicResp := openAIToAnthropic(out)
 
-		if hasToolUseBlocks(anthropicResp["content"]) {
+		if chatmsg.HasToolUseBlocks(anthropicResp["content"]) {
 			anthropicResp["stop_reason"] = "tool_use"
 		}
 
@@ -2387,7 +2258,7 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *
 			continue
 		}
 		if acc.id == "" {
-			acc.id = genToolUseID()
+			acc.id = chatmsg.GenToolUseID()
 		}
 		if !acc.emitted {
 			emitToolBlock(acc, nextIndex)
@@ -2520,4 +2391,151 @@ func freePort(port int) {
 		fmt.Sprintf(`$p=Get-NetTCPConnection -LocalPort %d -ErrorAction SilentlyContinue; if($p){Stop-Process -Id $p.OwningProcess -Force}`, port))
 	_ = cmd.Run()
 	time.Sleep(500 * time.Millisecond)
+}
+func callProvider(p *providers.CustomProvider, params map[string]any, stream bool) (*http.Response, error) {
+	body := map[string]any{}
+	for _, k := range chatmsg.PassThroughKeys {
+		if v, ok := params[k]; ok {
+			body[k] = v
+		}
+	}
+	for _, k := range []string{"model", "messages", "max_tokens", "max_completion_tokens", "stream"} {
+		if v, ok := params[k]; ok {
+			body[k] = v
+		}
+	}
+	if msgs, ok := params["messages"].([]any); ok {
+		body["messages"] = chatmsg.SanitizeMessages(msgs)
+	}
+	body["stream"] = stream
+	if _, ok := body["max_tokens"]; !ok {
+		if mt, ok := params["max_tokens"].(float64); ok {
+			body["max_tokens"] = mt
+		}
+	}
+	// 与 buildUpstreamBody 对称：低于上游硬下限的输出预算兜到默认值
+	if mt, ok := body["max_tokens"].(float64); ok && mt < chatmsg.MinUpstreamMaxTokens {
+		log.Printf("  provider clamp max_tokens=%d -> %d (upstream requires >= %d)", int(mt), chatmsg.DefaultMaxTokens, chatmsg.MinUpstreamMaxTokens)
+		body["max_tokens"] = chatmsg.DefaultMaxTokens
+	}
+	if mt, ok := body["max_completion_tokens"].(float64); ok && mt < chatmsg.MinUpstreamMaxTokens {
+		log.Printf("  provider clamp max_completion_tokens=%d -> %d (upstream requires >= %d)", int(mt), chatmsg.DefaultMaxTokens, chatmsg.MinUpstreamMaxTokens)
+		body["max_completion_tokens"] = chatmsg.DefaultMaxTokens
+	}
+
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal provider body: %w", err)
+	}
+
+	endpoint := strings.TrimRight(p.BaseURL, "/") + "/chat/completions"
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return nil, fmt.Errorf("create provider request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range p.Headers {
+		if v == "" {
+			req.Header.Del(k)
+			continue
+		}
+		req.Header.Set(k, v)
+	}
+
+	timeout := time.Duration(p.TimeoutSec) * time.Second
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	// 复用全局 transport（测试/代理定制经由 httpx.Client.Transport 生效）
+	client := &http.Client{Transport: httpx.Client.Transport, Timeout: timeout}
+
+	log.Printf("  provider upstream: name=%s model=%v stream=%v msgs=%d", p.Name, params["model"], stream, chatmsg.MsgCount(params))
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("provider request: %w", err)
+	}
+	if resp.StatusCode == http.StatusOK {
+		return resp, nil
+	}
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
+	resp.Body.Close()
+	// 429 / 5xx：该 provider 模型冷却 5 分钟（有 Retry-After 时优先）
+	until := time.Now().Add(5 * time.Minute)
+	if ra := parseRetryAfter(resp.Header.Get("Retry-After")); ra > 0 {
+		until = time.Now().Add(ra)
+	}
+	providers.SetProviderCooldown(p.ID, fmt.Sprintf("%v", params["model"]), until)
+	return nil, &clineAPIError{statusCode: resp.StatusCode, message: strutil.Truncate(string(bodyBytes), 500)}
+}
+
+// handleProviderStreamResponse 转发 provider 的流式响应（OpenAI 格式）。
+func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response, reqLog *types.RequestLog) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(http.StatusOK)
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		return
+	}
+	reader := bufio.NewReader(upstream.Body)
+	var latestUsage types.TokenUsage
+	var firstOutputAt time.Time
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF && line != "" {
+				w.Write([]byte(line + "\n"))
+				flusher.Flush()
+			}
+			break
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if strings.HasPrefix(line, "data:") {
+			payload := strings.TrimSpace(line[5:])
+			if payload == "" || payload == "[DONE]" {
+				w.Write([]byte(line + "\n\n"))
+				flusher.Flush()
+				continue
+			}
+			var obj map[string]any
+			if json.Unmarshal([]byte(payload), &obj) == nil {
+				normalized := normalizeOpenAIResponse(obj)
+				if u := types.ParseTokenUsage(normalized["usage"]); u.Valid {
+					latestUsage = mergeTokenUsage(latestUsage, u)
+				}
+				if firstOutputAt.IsZero() && hasFirstOutput(normalized) {
+					firstOutputAt = time.Now()
+				}
+				if b, err := json.Marshal(normalized); err == nil {
+					w.Write([]byte("data: " + string(b) + "\n\n"))
+					flusher.Flush()
+					continue
+				}
+			}
+		}
+		w.Write([]byte(line + "\n"))
+		flusher.Flush()
+	}
+	recordTokenUsage(nil, reqLog.Model, latestUsage)
+	reqlog.FinalizeRequestLog(reqLog, latestUsage, firstOutputAt, reqLog.StartedAt, true, "")
+}
+
+// ============================================================================
+// Provider 预设（市面常见免费/低成本 OpenAI 兼容上游）
+// ============================================================================
+
+func callCustomProviderAPI(params map[string]any, stream bool) (*http.Response, error, bool) {
+	model, _ := params["model"].(string)
+	p := providers.ResolveProviderForModel(model)
+	if p == nil {
+		return nil, nil, false
+	}
+	resp, err := callProvider(p, params, stream)
+	if err != nil {
+		return nil, err, true
+	}
+	return resp, nil, true
 }
