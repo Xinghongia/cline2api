@@ -47,7 +47,10 @@
     "runtime": "Runtime",
     "version": "Version",
     "address": "Listen address",
-    "defaultModel": "Default model"
+    "defaultModel": "Default model",
+    "trend": "Usage trend",
+    "upstreamSplit": "Upstream split (tokens)",
+    "topModels": "Top 5 models (tokens)"
   },
   "accounts": {
     "subtitle": "Cline account pool; requests are rotated across active accounts by strategy",
@@ -118,7 +121,14 @@
     "completed": "OK",
     "failed": "Failed",
     "empty": "No request logs yet",
-    "end": "All loaded"
+    "end": "All loaded",
+    "cached": "cached",
+    "modelFilter": "Exact model ID",
+    "upstreamFilter": "Upstream",
+    "statusFilter": "Result",
+    "search": "Search model/account/error",
+    "apply": "Filter",
+    "key": "Key"
   },
   "models": {
     "subtitle": "Models auto-sync from Cline / opencode at startup; manual management also supported",
@@ -215,7 +225,14 @@
     "pwdPlaceholder": "New password; submit empty = clear password",
     "pwdClear": "Clear password",
     "pwdSaved": "Password updated (leave empty to clear)",
-    "usage": "Client usage: header x-api-key or Authorization: Bearer <key>; Base URL: http://<host>:3457/v1"
+    "usage": "Client usage: header x-api-key or Authorization: Bearer <key>; Base URL: http://<host>:3457/v1",
+    "updated": "Updated",
+    "nameCol": "Name",
+    "setName": "Set name",
+    "enabledCol": "Enabled",
+    "totalRequests": "Calls",
+    "namePlaceholder": "Name/note (optional), e.g. My Claude Code",
+    "rename": "Rename key"
   },
   "settings": {
     "subtitle": "Rotation strategy, upstream headers, free chain and listen address",

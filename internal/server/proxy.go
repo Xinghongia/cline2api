@@ -395,7 +395,7 @@ func StartProxy(host string, port int) error {
 		log.Printf("  client: stream=%v tools=%d model=%s", isStream, toolCount, model)
 
 		reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "openai", Model: model, Stream: isStream}
-	reqLog.APIKeyID = apiKeyIDFromContext(r.Context())
+		reqLog.APIKeyID = apiKeyIDFromContext(r.Context())
 
 		// Override system prompt from override.md for OpenAI format
 		if override := loadOverrideContent(); override != "" {
@@ -470,9 +470,11 @@ func StartProxy(host string, port int) error {
 
 		// cline 池路径才要求账号；zen 免费模型不依赖本地账号池
 		if activeCount == 0 && len(pool.Load().Accounts) == 0 {
+			msg := "No accounts in pool. Run with --add-account or POST /admin/login to add accounts."
+			reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
 			writeJSON(w, http.StatusUnauthorized, map[string]any{
 				"error": map[string]string{
-					"message": "No accounts in pool. Run with --add-account or POST /admin/login to add accounts.",
+					"message": msg,
 					"type":    "auth_error",
 				},
 			})
@@ -1932,9 +1934,11 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if activeCount == 0 && len(p.Accounts) == 0 {
+		msg := "No accounts in pool"
+		reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
 		writeJSON(w, http.StatusUnauthorized, map[string]any{
 			"error": map[string]string{
-				"message": "No accounts in pool",
+				"message": msg,
 				"type":    "auth_error",
 			},
 		})

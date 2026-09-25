@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Button, Table, Tag, Tooltip } from 'antd'
+import { Button, Input, Select, Space, Table, Tag, Tooltip } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 
@@ -8,6 +8,13 @@ import type { LogPage, RequestLog } from '../api/types'
 import PageHeader from '../components/PageHeader'
 import { fmtNum, fmtTime } from '../utils'
 
+interface Filters {
+  model: string
+  upstream: string
+  status: string
+  q: string
+}
+
 export default function Logs() {
   const { t } = useTranslation()
   const [items, setItems] = useState<RequestLog[]>([])
@@ -15,13 +22,25 @@ export default function Logs() {
   const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [filters, setFilters] = useState<Filters>({ model: '', upstream: '', status: '', q: '' })
+  const [applied, setApplied] = useState<Filters>({ model: '', upstream: '', status: '', q: '' })
+
+  const buildQuery = useCallback((f: Filters, cursorVal: string) => {
+    const qs = new URLSearchParams()
+    qs.set('limit', '50')
+    if (f.model) qs.set('model', f.model)
+    if (f.upstream) qs.set('upstream', f.upstream)
+    if (f.status) qs.set('status', f.status)
+    if (f.q) qs.set('q', f.q)
+    if (cursorVal) qs.set('cursor', cursorVal)
+    return qs.toString()
+  }, [])
 
   const load = useCallback(
-    async (reset: boolean) => {
+    async (reset: boolean, f: Filters) => {
       reset ? setLoading(true) : setLoadingMore(true)
       try {
-        const q = reset ? '' : `&cursor=${encodeURIComponent(cursor)}`
-        const page = await api.get<LogPage>(`/request-logs?limit=50${q}`)
+        const page = await api.get<LogPage>(`/request-logs?${buildQuery(f, reset ? '' : cursor)}`)
         setItems((prev) => (reset ? page.items : [...prev, ...page.items]))
         setCursor(page.nextCursor)
         setHasMore(page.hasMore)
@@ -30,14 +49,19 @@ export default function Logs() {
         setLoadingMore(false)
       }
     },
-    [cursor],
+    [cursor, buildQuery],
   )
 
   // 首次加载
   const [loaded, setLoaded] = useState(false)
   if (!loaded) {
     setLoaded(true)
-    void load(true)
+    void load(true, applied)
+  }
+
+  const applyFilters = () => {
+    setApplied(filters)
+    void load(true, filters)
   }
 
   const columns = [
@@ -75,6 +99,20 @@ export default function Logs() {
       render: (v: string) => v || '-',
     },
     {
+      title: t('logs.key', 'Key'),
+      dataIndex: 'apiKeyId',
+      key: 'apiKeyId',
+      width: 130,
+      render: (v: string) =>
+        v ? (
+          <span style={{ fontFamily: 'monospace', fontSize: 11 }}>
+            {v.slice(0, 10)}…{v.slice(-4)}
+          </span>
+        ) : (
+          '-'
+        ),
+    },
+    {
       title: t('logs.tokens', 'Tokens (入/出/缓存/总)'),
       key: 'tokens',
       render: (_: unknown, row: RequestLog) => (
@@ -107,7 +145,7 @@ export default function Logs() {
         completed ? (
           <Tag color="success">{t('logs.completed', '完成')}</Tag>
         ) : (
-          <Tooltip title={row.error}>
+          <Tooltip title={row.error ? `${row.error}${row.errorClass ? ` (${row.errorClass})` : ''}` : ''}>
             <Tag color="error">{t('logs.failed', '失败')}</Tag>
           </Tooltip>
         ),
@@ -120,11 +158,54 @@ export default function Logs() {
         title={t('nav.logs', '请求日志')}
         subtitle={t('logs.subtitle', '每次转发的用量与耗时记录')}
         extra={
-          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load(true)}>
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load(true, applied)}>
             {t('common.refresh', '刷新')}
           </Button>
         }
       />
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Input
+          allowClear
+          style={{ width: 220 }}
+          placeholder={t('logs.modelFilter', '模型 ID 精确匹配')}
+          value={filters.model}
+          onChange={(e) => setFilters({ ...filters, model: e.target.value })}
+          onPressEnter={applyFilters}
+        />
+        <Select
+          allowClear
+          style={{ width: 130 }}
+          placeholder={t('logs.upstreamFilter', '上游')}
+          value={filters.upstream || undefined}
+          onChange={(v) => setFilters({ ...filters, upstream: v ?? '' })}
+          options={[
+            { value: 'cline', label: 'cline' },
+            { value: 'opencode', label: 'opencode' },
+          ]}
+        />
+        <Select
+          allowClear
+          style={{ width: 120 }}
+          placeholder={t('logs.statusFilter', '结果')}
+          value={filters.status || undefined}
+          onChange={(v) => setFilters({ ...filters, status: v ?? '' })}
+          options={[
+            { value: 'ok', label: t('logs.completed', '完成') },
+            { value: 'error', label: t('logs.failed', '失败') },
+          ]}
+        />
+        <Input.Search
+          allowClear
+          style={{ width: 220 }}
+          placeholder={t('logs.search', '搜索模型/账号/错误')}
+          value={filters.q}
+          onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+          onSearch={applyFilters}
+        />
+        <Button type="primary" onClick={applyFilters}>
+          {t('logs.apply', '筛选')}
+        </Button>
+      </Space>
       <Table
         rowKey="id"
         size="small"
@@ -136,7 +217,7 @@ export default function Logs() {
         footer={() =>
           hasMore ? (
             <div style={{ textAlign: 'center' }}>
-              <Button loading={loadingMore} onClick={() => void load(false)}>
+              <Button loading={loadingMore} onClick={() => void load(false, applied)}>
                 {t('common.loadMore', '加载更多')}
               </Button>
             </div>

@@ -133,6 +133,8 @@ export interface RequestLog {
   accountEmail?: string
   protocol?: string
   upstream?: string
+  apiKeyId?: string
+  providerId?: string
   model?: string
   stream?: boolean
   inputTokens: number
@@ -145,6 +147,7 @@ export interface RequestLog {
   outputTokensPerSecond?: number
   completed: boolean
   error?: string
+  errorClass?: string
 }
 
 export interface LogPage {
@@ -213,4 +216,60 @@ export interface OpencodeConfig {
 export interface ClineProxyConfig {
   proxies: string[]
   proxyStrategy: string
+}
+
+export interface APIKey {
+  key: string
+  name?: string
+  enabled: boolean
+  createdAt?: string
+  lastUsedAt?: string
+  totalRequests?: number
+  inputTokens?: number
+  outputTokens?: number
+  cachedTokens?: number
+  totalTokens?: number
+}
+
+export interface SeriesPoint {
+  t: number
+  r: number
+  in: number
+  out: number
+  cached: number
+  total: number
+}
+
+export interface SeriesGroup {
+  name: string
+  points: SeriesPoint[]
+}
+
+export interface SeriesResp {
+  bucket: string
+  from: number
+  to: number
+  groups: SeriesGroup[]
+}
+
+export interface NamedUsage {
+  name: string
+  requests: number
+  totalTokens: number
+}
+
+export interface Totals {
+  requests: number
+  inputTokens: number
+  outputTokens: number
+  cachedTokens: number
+  totalTokens: number
+}
+
+export interface SummaryResp {
+  range: string
+  totals: Totals
+  topModels: NamedUsage[]
+  upstreams: NamedUsage[]
+  topKeys: NamedUsage[]
 }
