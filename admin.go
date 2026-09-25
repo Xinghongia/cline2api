@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/proxyconfig"
 	"cline-go-proxy/internal/reqlog"
@@ -402,7 +403,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := workosDeviceAuth()
+	device, err := cline.WorkosDeviceAuth()
 	if err != nil {
 		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
 		return
@@ -436,7 +437,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 			expiresIn = 300
 		}
 
-		workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+		workosTok, err := cline.PollWorkosToken(device.DeviceCode, interval, expiresIn)
 		if err != nil {
 			oauthSessionsMu.Lock()
 			state.Error = err.Error()
@@ -446,7 +447,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+		cline, err := cline.RegisterWithCline(workosTok.AccessToken, workosTok.RefreshToken)
 		if err != nil {
 			oauthSessionsMu.Lock()
 			state.Error = err.Error()
@@ -736,7 +737,7 @@ func handleOpenExternal(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "url_http_only")})
 		return
 	}
-	if err := openBrowser(url); err != nil {
+	if err := cline.OpenBrowser(url); err != nil {
 		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
 		return
 	}
@@ -1078,7 +1079,7 @@ func handleAdminModels(w http.ResponseWriter, r *http.Request) {
 			models[i].Cost = "free"
 		}
 	}
-	sync := getModelSyncResult()
+	sync := cline.GetModelSyncResult()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
 		"models":   models,
 		"lastSync": sync,
@@ -1504,7 +1505,7 @@ func handleClineProxyConfig(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
 		return
 	}
-	cfg := getClineProxyConfig()
+	cfg := cline.GetClineProxyConfig()
 	maskedProxies := make([]string, 0, len(cfg.Proxies))
 	for _, p := range cfg.Proxies {
 		maskedProxies = append(maskedProxies, maskProxyURL(p))
@@ -1543,8 +1544,8 @@ func handleClineProxyConfigUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	cfg := getClineProxyConfig()
-	updated := &clineProxyConfigData{
+	cfg := cline.GetClineProxyConfig()
+	updated := &cline.ClineProxyConfigData{
 		Proxies:       cfg.Proxies,
 		ProxyStrategy: cfg.ProxyStrategy,
 	}
@@ -1560,8 +1561,8 @@ func handleClineProxyConfigUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	setClineProxyConfig(updated)
-	if err := getClineProxyPersistErr(); err != nil {
+	cline.SetClineProxyConfig(updated)
+	if err := cline.GetClineProxyPersistErr(); err != nil {
 		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
 		return
 	}
@@ -1577,6 +1578,20 @@ func handleOpenCodeModelSync(w http.ResponseWriter, r *http.Request) {
 	}
 	res := syncZenModels()
 	setLastZenModelSync(res)
+	if res.Error != "" {
+		writeAPI(w, http.StatusBadGateway, apiResponse{Success: false, Error: res.Error, Message: tAPI(r, "model_sync_failed")})
+		return
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: res, Message: tAPI(r, "model_sync_done")})
+}
+
+// POST /admin/api/models/sync — 手动触发一次模型同步
+func handleAdminModelSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	res := cline.TriggerModelSync()
 	if res.Error != "" {
 		writeAPI(w, http.StatusBadGateway, apiResponse{Success: false, Error: res.Error, Message: tAPI(r, "model_sync_failed")})
 		return

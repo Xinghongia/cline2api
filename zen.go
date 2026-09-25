@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/randx"
 	"cline-go-proxy/internal/reqlog"
 	"cline-go-proxy/internal/strutil"
 	"cline-go-proxy/internal/types"
@@ -510,25 +512,12 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func randIntn(n int) int {
-	if n <= 0 {
-		return 0
-	}
-	b := make([]byte, 4)
-	rand.Read(b)
-	v := int(b[0])<<24 | int(b[1])<<16 | int(b[2])<<8 | int(b[3])
-	if v < 0 {
-		v = -v
-	}
-	return v % n
-}
-
 // withRetryJitter 在退避时长上叠加 0~25% 抖动，错开并发重试。
 func withRetryJitter(delay time.Duration) time.Duration {
 	if delay <= 0 {
 		return delay
 	}
-	return delay + time.Duration(float64(delay)*float64(randIntn(26))/100)
+	return delay + time.Duration(float64(delay)*float64(randx.Intn(26))/100)
 }
 
 // canonicalZenSession 把种子确定性地哈希进规范会话形态。
@@ -1049,9 +1038,9 @@ func describeZenProxy() string {
 // syncZenModels 拉取 zen 官方 /models 并全量替换 pool.State 中 Source=="zen" 条目：
 // 计算新增/移除清单 —— 官方下架的模型自动从列表消失，不留僵尸条目。
 // 自定义模型（Custom=true 或其他 Source）不受影响。
-func syncZenModels() modelSyncResult {
-	res := modelSyncResult{SyncedAt: time.Now().Format(time.RFC3339)}
-	fail := func(err error) modelSyncResult {
+func syncZenModels() cline.ModelSyncResult {
+	res := cline.ModelSyncResult{SyncedAt: time.Now().Format(time.RFC3339)}
+	fail := func(err error) cline.ModelSyncResult {
 		msg := err.Error()
 		// 网络类错误给出代理配置提示（opencode.ai 被网络封锁时直连必然失败）
 		if strings.Contains(msg, "timeout") || strings.Contains(msg, "handshake") ||
@@ -1216,23 +1205,23 @@ func startZenModelsRefresher() {
 // ============ 最近一次同步结果（管理后台展示） ============
 
 var (
-	lastZenSync    modelSyncResult
+	lastZenSync    cline.ModelSyncResult
 	lastZenSyncRan bool
 	lastZenSyncMu  sync.Mutex
 )
 
-func setLastZenModelSync(res modelSyncResult) {
+func setLastZenModelSync(res cline.ModelSyncResult) {
 	lastZenSyncMu.Lock()
 	lastZenSync = res
 	lastZenSyncRan = true
 	lastZenSyncMu.Unlock()
 }
 
-func lastZenModelSync() modelSyncResult {
+func lastZenModelSync() cline.ModelSyncResult {
 	lastZenSyncMu.Lock()
 	defer lastZenSyncMu.Unlock()
 	if !lastZenSyncRan {
-		return modelSyncResult{SyncedAt: ""}
+		return cline.ModelSyncResult{SyncedAt: ""}
 	}
 	return lastZenSync
 }

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/pool"
 	"flag"
 	"fmt"
@@ -30,14 +31,14 @@ func main() {
 	}
 
 	if *captureMode {
-		if err := doFullCapture(); err != nil {
+		if err := cline.DoFullCapture(); err != nil {
 			log.Fatalf("Capture failed: %v", err)
 		}
 		return
 	}
 
 	if *loginMode || *addAccount {
-		acc, err := addAccountFromDeviceAuth()
+		acc, err := cline.AddAccountFromDeviceAuth()
 		if err != nil {
 			log.Fatalf("Login failed: %v", err)
 		}

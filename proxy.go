@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/httpx"
 	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/proxyconfig"
@@ -261,7 +262,7 @@ func startProxy(host string, port int) error {
 	log.Printf("Loaded %d active accounts from pool", activeCount)
 
 	// 启动时异步同步一次 Cline 官方推荐模型（不阻塞启动）
-	startModelSync()
+	cline.StartModelSync()
 
 	// opencode zen：定时同步免费模型列表 + 压缩会话状态清理
 	if getZenConfig().Enabled {
@@ -942,7 +943,7 @@ func isFreeAliasModel(model string) bool {
 // 已下架的内置模型（如 longcat-2.0，不在远程同步列表）自动排除，不再写死；
 // 从未同步成功（离线）时回退内置常量链。
 func defaultFreeChain() []string {
-	remote := remoteModelsActive()
+	remote := cline.RemoteModelsActive()
 	p := pool.Load()
 	known := make(map[string]bool, len(p.Models))
 	var remoteFree []string

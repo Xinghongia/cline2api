@@ -1,4 +1,4 @@
-package main
+package cline
 
 import (
 	"bytes"
@@ -194,7 +194,7 @@ func sanitizeFilename(s string) string {
 	return r.Replace(s)
 }
 
-func doFullCapture() error {
+func DoFullCapture() error {
 	fmt.Println("")
 	fmt.Println("╔" + strings.Repeat("═", 70) + "╗")
 	fmt.Println("║         Cline OAuth 完整流量抓包 - 全流程记录                    ║")

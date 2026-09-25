@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/httpx"
 	"cline-go-proxy/internal/pool"
 	"cline-go-proxy/internal/proxyconfig"
@@ -31,9 +32,7 @@ func protocolTestServer(t *testing.T) string {
 	listener.Close()
 
 	protocolModelSyncOnce.Do(func() {
-		modelSyncMu.Lock()
-		modelSyncRan = true
-		modelSyncMu.Unlock()
+		cline.MarkModelSyncRanForTest()
 	})
 
 	zenConfigMu.Lock()

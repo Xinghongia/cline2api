@@ -1,4 +1,4 @@
-package main
+package cline
 
 import (
 	"cline-go-proxy/internal/httpx"
@@ -38,8 +38,8 @@ type clineRecommendedResponse struct {
 	ClinePass   []clineRemoteModel `json:"clinePass"`
 }
 
-// modelSyncResult 是一次模型同步的结果（供管理后台弹窗展示）。
-type modelSyncResult struct {
+// ModelSyncResult 是一次模型同步的结果（供管理后台弹窗展示）。
+type ModelSyncResult struct {
 	Changed  bool     `json:"changed"`
 	Added    []string `json:"added"`
 	Removed  []string `json:"removed"`
@@ -50,7 +50,7 @@ type modelSyncResult struct {
 
 var (
 	modelSyncMu   sync.Mutex
-	lastModelSync modelSyncResult
+	lastModelSync ModelSyncResult
 	modelSyncRan  bool // 启动后是否已同步过（避免重复）
 	modelSyncBusy bool // 同步进行中（防并发触发）
 )
@@ -62,8 +62,8 @@ var (
 	remoteModelsEnabledMu sync.Mutex
 )
 
-// fetchClineRecommendedModels 拉取并解析 Cline 官方推荐模型接口。
-func fetchClineRecommendedModels() (clineRecommendedResponse, error) {
+// FetchClineRecommendedModels 拉取并解析 Cline 官方推荐模型接口。
+func FetchClineRecommendedModels() (clineRecommendedResponse, error) {
 	// 复用全局 transport：模型同步与 Cline 对话同源（api.cline.bot），共用出口代理
 	client := &http.Client{Timeout: modelSyncTimeout, Transport: httpx.Transport}
 	resp, err := client.Get(clineRecommendedModelsURL)
@@ -104,14 +104,14 @@ func remoteProvider(id string) string {
 	return "cline"
 }
 
-// syncClineModels 执行一次模型同步并持久化：
+// SyncClineModels 执行一次模型同步并持久化：
 //  1. 拉取远程推荐模型（free / clinePass / recommended）
 //  2. 与池中现有 remote 模型比较，得到 added / removed
 //  3. 更新 types.AccountPool.Models（替换 Source=remote 的旧条目），保存
 //  4. 记录 lastModelSync 供管理后台弹窗
 //
 // 任何一步失败都会把错误写进 lastModelSync，不阻塞服务启动。
-func syncClineModels() modelSyncResult {
+func SyncClineModels() ModelSyncResult {
 	modelSyncMu.Lock()
 	if modelSyncBusy {
 		modelSyncMu.Unlock()
@@ -121,8 +121,8 @@ func syncClineModels() modelSyncResult {
 	modelSyncMu.Unlock()
 	defer func() { modelSyncMu.Lock(); modelSyncBusy = false; modelSyncMu.Unlock() }()
 
-	res := modelSyncResult{SyncedAt: time.Now().Format(time.RFC3339)}
-	fail := func(err error) modelSyncResult {
+	res := ModelSyncResult{SyncedAt: time.Now().Format(time.RFC3339)}
+	fail := func(err error) ModelSyncResult {
 		log.Printf("models sync failed: %v", err)
 		res.Error = err.Error()
 		modelSyncMu.Lock()
@@ -131,7 +131,7 @@ func syncClineModels() modelSyncResult {
 		return res
 	}
 
-	data, err := fetchClineRecommendedModels()
+	data, err := FetchClineRecommendedModels()
 	if err != nil {
 		return fail(err)
 	}
@@ -206,47 +206,40 @@ func syncClineModels() modelSyncResult {
 	return res
 }
 
-// triggerModelSync 供管理后台手动触发同步；非阻塞等待完成并返回结果。
-func triggerModelSync() modelSyncResult {
-	return syncClineModels()
+// TriggerModelSync 供管理后台手动触发同步；非阻塞等待完成并返回结果。
+func TriggerModelSync() ModelSyncResult {
+	return SyncClineModels()
 }
 
-// getModelSyncResult 返回最近一次同步结果（供管理后台展示）。
-func getModelSyncResult() modelSyncResult {
+// GetModelSyncResult 返回最近一次同步结果（供管理后台展示）。
+func GetModelSyncResult() ModelSyncResult {
 	modelSyncMu.Lock()
 	defer modelSyncMu.Unlock()
 	if !modelSyncRan {
-		return modelSyncResult{SyncedAt: ""}
+		return ModelSyncResult{SyncedAt: ""}
 	}
 	return lastModelSync
 }
 
-// startModelSync 在服务启动时异步同步一次（不阻塞启动）。
-func startModelSync() {
+// StartModelSync 在服务启动时异步同步一次（不阻塞启动）。
+func StartModelSync() {
 	go func() {
 		if !modelSyncRan {
-			syncClineModels()
+			SyncClineModels()
 		}
 	}()
 }
 
-// remoteModelsActive 返回远程模型是否已启用（同步成功过）。
-func remoteModelsActive() bool {
+// RemoteModelsActive 返回远程模型是否已启用（同步成功过）。
+func RemoteModelsActive() bool {
 	remoteModelsEnabledMu.Lock()
 	defer remoteModelsEnabledMu.Unlock()
 	return remoteModelsEnabled
 }
 
-// POST /admin/api/models/sync — 手动触发一次模型同步
-func handleAdminModelSync(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
-		return
-	}
-	res := triggerModelSync()
-	if res.Error != "" {
-		writeAPI(w, http.StatusBadGateway, apiResponse{Success: false, Error: res.Error, Message: tAPI(r, "model_sync_failed")})
-		return
-	}
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: res, Message: tAPI(r, "model_sync_done")})
+// MarkModelSyncRanForTest 标记模型同步已执行过（测试跳过真实同步用）。
+func MarkModelSyncRanForTest() {
+	modelSyncMu.Lock()
+	modelSyncRan = true
+	modelSyncMu.Unlock()
 }

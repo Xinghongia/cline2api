@@ -1,4 +1,4 @@
-package main
+package cline
 
 import (
 	"cline-go-proxy/internal/httpx"
@@ -51,7 +51,6 @@ type clineAuthResp struct {
 		} `json:"userInfo"`
 	} `json:"data"`
 }
-
 
 var (
 	cachedToken      string
@@ -116,7 +115,7 @@ func saveCredentials(rt string) {
 	log.Printf("Credentials saved to %s", credentialsPath)
 }
 
-func workosDeviceAuth() (*deviceAuthResp, error) {
+func WorkosDeviceAuth() (*deviceAuthResp, error) {
 	form := url.Values{"client_id": {workosClientID}}
 	resp, err := httpx.PostForm(workosDeviceAuthURL, form)
 	if err != nil {
@@ -136,7 +135,7 @@ func workosDeviceAuth() (*deviceAuthResp, error) {
 	return &d, nil
 }
 
-func pollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateResp, error) {
+func PollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateResp, error) {
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	currentInterval := interval
 	if currentInterval < 5 {
@@ -182,7 +181,7 @@ func pollWorkosToken(deviceCode string, interval, expiresIn int) (*authenticateR
 	return nil, fmt.Errorf("device authorization expired (timeout)")
 }
 
-func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, error) {
+func RegisterWithCline(workosAccess, workosRefresh string) (*clineAuthResp, error) {
 	body := map[string]string{
 		"accessToken":  workosAccess,
 		"refreshToken": workosRefresh,
@@ -205,8 +204,7 @@ func registerWithCline(workosAccess, workosRefresh string) (*clineAuthResp, erro
 	return &c, nil
 }
 
-
-func getToken() (string, error) {
+func GetToken() (string, error) {
 	if cachedToken != "" && time.Now().UnixMilli() < cachedExpiry {
 		return cachedToken, nil
 	}
@@ -229,13 +227,12 @@ func getToken() (string, error) {
 	return "", fmt.Errorf("no valid credentials. Run with --login flag first")
 }
 
-
-func doLogin() error {
+func DoLogin() error {
 	fmt.Println()
 	fmt.Println("Starting Cline OAuth login...")
 	fmt.Println()
 
-	device, err := workosDeviceAuth()
+	device, err := WorkosDeviceAuth()
 	if err != nil {
 		return err
 	}
@@ -252,7 +249,7 @@ func doLogin() error {
 	fmt.Println()
 
 	// Try to open browser automatically
-	_ = openBrowser(authURL)
+	_ = OpenBrowser(authURL)
 
 	fmt.Println("  Waiting for authorization...")
 
@@ -265,14 +262,14 @@ func doLogin() error {
 		expiresIn = 300
 	}
 
-	workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+	workosTok, err := PollWorkosToken(device.DeviceCode, interval, expiresIn)
 	if err != nil {
 		return err
 	}
 
 	fmt.Println("  WorkOS authorized. Registering with Cline...")
 
-	cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+	cline, err := RegisterWithCline(workosTok.AccessToken, workosTok.RefreshToken)
 	if err != nil {
 		return err
 	}
@@ -294,12 +291,12 @@ func doLogin() error {
 	return nil
 }
 
-func openBrowser(url string) error {
+func OpenBrowser(url string) error {
 	var cmd string
 	var args []string
 
 	switch {
-	case isWindows():
+	case IsWindows():
 		cmd = "rundll32"
 		args = []string{"url.dll,FileProtocolHandler", url}
 	default:
@@ -323,15 +320,15 @@ func openBrowser(url string) error {
 	return httpx.RunCommand(cmd, args...)
 }
 
-func isWindows() bool {
+func IsWindows() bool {
 	return strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")
 }
-func addAccountFromDeviceAuth() (*types.Account, error) {
+func AddAccountFromDeviceAuth() (*types.Account, error) {
 	fmt.Println()
 	fmt.Println("=== Add New Cline Account (OAuth) ===")
 	fmt.Println()
 
-	device, err := workosDeviceAuth()
+	device, err := WorkosDeviceAuth()
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +344,7 @@ func addAccountFromDeviceAuth() (*types.Account, error) {
 	fmt.Println("  3. Log in with Google, GitHub, or email")
 	fmt.Println()
 
-	_ = openBrowser(authURL)
+	_ = OpenBrowser(authURL)
 	fmt.Println("  Waiting for authorization...")
 
 	interval := device.Interval
@@ -359,14 +356,14 @@ func addAccountFromDeviceAuth() (*types.Account, error) {
 		expiresIn = 300
 	}
 
-	workosTok, err := pollWorkosToken(device.DeviceCode, interval, expiresIn)
+	workosTok, err := PollWorkosToken(device.DeviceCode, interval, expiresIn)
 	if err != nil {
 		return nil, err
 	}
 
 	fmt.Println("  WorkOS authorized. Registering with Cline...")
 
-	cline, err := registerWithCline(workosTok.AccessToken, workosTok.RefreshToken)
+	cline, err := RegisterWithCline(workosTok.AccessToken, workosTok.RefreshToken)
 	if err != nil {
 		return nil, err
 	}

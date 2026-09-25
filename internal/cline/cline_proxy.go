@@ -1,7 +1,8 @@
-package main
+package cline
 
 import (
 	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/randx"
 	"cline-go-proxy/internal/httpx"
 	"context"
 	"encoding/json"
@@ -24,26 +25,26 @@ import (
 // 代理后，所有发往 Cline 上游的请求（对话、登录/令牌刷新、模型同步，以及复用全局
 // transport 的自定义 Provider）经代理池轮询出去。
 // 未配置时保持原行为：环境变量代理（HTTPS_PROXY / HTTP_PROXY）→ 直连。
-// 拨号复用 zen_proxy.go 的 dialViaProxy；配置与冷却状态与 zen 代理池相互独立。
+// 拨号复用 zen_proxy.go 的 httpx.DialViaProxy；配置与冷却状态与 zen 代理池相互独立。
 // ============================================================================
 
-type clineProxyConfigData struct {
+type ClineProxyConfigData struct {
 	Proxies       []string `json:"proxies"`
 	ProxyStrategy string   `json:"proxyStrategy"` // round_robin / random / fill
 }
 
 var (
-	clineProxyCfg   *clineProxyConfigData
+	clineProxyCfg   *ClineProxyConfigData
 	clineProxyCfgMu sync.Mutex
 	clineProxyCount atomic.Uint64
 )
 
-func defaultClineProxyConfig() *clineProxyConfigData {
-	return &clineProxyConfigData{Proxies: []string{}, ProxyStrategy: "round_robin"}
+func defaultClineProxyConfig() *ClineProxyConfigData {
+	return &ClineProxyConfigData{Proxies: []string{}, ProxyStrategy: "round_robin"}
 }
 
-// getClineProxyConfig 惰性加载配置（避免依赖包初始化顺序）。
-func getClineProxyConfig() *clineProxyConfigData {
+// GetClineProxyConfig 惰性加载配置（避免依赖包初始化顺序）。
+func GetClineProxyConfig() *ClineProxyConfigData {
 	clineProxyCfgMu.Lock()
 	defer clineProxyCfgMu.Unlock()
 	if clineProxyCfg == nil {
@@ -65,20 +66,20 @@ var (
 	clineProxyPersistErrMu sync.Mutex
 )
 
-func setClineProxyPersistErr(err error) {
+func SetClineProxyPersistErr(err error) {
 	clineProxyPersistErrMu.Lock()
 	defer clineProxyPersistErrMu.Unlock()
 	clineProxyPersistErr = err
 }
 
-func getClineProxyPersistErr() error {
+func GetClineProxyPersistErr() error {
 	clineProxyPersistErrMu.Lock()
 	defer clineProxyPersistErrMu.Unlock()
 	return clineProxyPersistErr
 }
 
-// setClineProxyConfig 原子替换配置并持久化。传输层按请求读取配置，无需重建。
-func setClineProxyConfig(c *clineProxyConfigData) {
+// SetClineProxyConfig 原子替换配置并持久化。传输层按请求读取配置，无需重建。
+func SetClineProxyConfig(c *ClineProxyConfigData) {
 	normalizeClineProxyConfig(c)
 	clineProxyCfgMu.Lock()
 	clineProxyCfg = c
@@ -87,13 +88,13 @@ func setClineProxyConfig(c *clineProxyConfigData) {
 	data, _ := json.MarshalIndent(c, "", "  ")
 	if err := os.WriteFile(apphome.ResolveDataPath(".cline-proxy.json"), data, 0600); err != nil {
 		log.Printf("cline proxy config save failed: %v", err)
-		setClineProxyPersistErr(err)
+		SetClineProxyPersistErr(err)
 		return
 	}
-	setClineProxyPersistErr(nil)
+	SetClineProxyPersistErr(nil)
 }
 
-func normalizeClineProxyConfig(c *clineProxyConfigData) {
+func normalizeClineProxyConfig(c *ClineProxyConfigData) {
 	cleaned := make([]string, 0, len(c.Proxies))
 	for _, p := range c.Proxies {
 		if line := strings.TrimSpace(p); line != "" {
@@ -110,7 +111,7 @@ func normalizeClineProxyConfig(c *clineProxyConfigData) {
 // 传输层钩子按「一次请求一次快照」读取，避免同一请求内 active→dial 两次 get
 // 之间并发更新导致的判定不一致。
 func snapshotClineProxyConfig() (proxies []string, strategy string) {
-	cfg := getClineProxyConfig()
+	cfg := GetClineProxyConfig()
 	clineProxyCfgMu.Lock()
 	defer clineProxyCfgMu.Unlock()
 	proxies = append([]string(nil), cfg.Proxies...)
@@ -118,7 +119,7 @@ func snapshotClineProxyConfig() (proxies []string, strategy string) {
 }
 
 func clineProxiesActive() bool {
-	cfg := getClineProxyConfig()
+	cfg := GetClineProxyConfig()
 	clineProxyCfgMu.Lock()
 	defer clineProxyCfgMu.Unlock()
 	return len(cfg.Proxies) > 0
@@ -140,7 +141,7 @@ func pickFromClineProxies(proxies []string, strategy string) string {
 	idx := int(clineProxyCount.Add(1)-1) % n
 	switch strategy {
 	case "random":
-		idx = randIntn(n)
+		idx = randx.Intn(n)
 	case "fill":
 		idx = 0
 	}
@@ -170,7 +171,7 @@ func clineOutboundProxy(req *http.Request) (*url.URL, error) {
 func clineDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	if proxies, strategy := snapshotClineProxyConfig(); len(proxies) > 0 && !clineDirectDialHost(addr) {
 		if p := pickFromClineProxies(proxies, strategy); p != "" {
-			return dialViaProxy(ctx, p, network, addr)
+			return httpx.DialViaProxy(ctx, p, network, addr)
 		}
 	}
 	d := &net.Dialer{Timeout: 12 * time.Second, KeepAlive: 30 * time.Second}
