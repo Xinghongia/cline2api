@@ -16,21 +16,24 @@ Cline API 反向代理 · 多账号轮询 · 双协议兼容 · 桌面端
 
 ## 简介
 
-Cline2API 是 Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中英文管理后台（自动跟随浏览器语言，可手动切换）。提供跨平台桌面端单文件应用（Windows / macOS / Linux），双击即用。
+Cline2API 是 Cline API 的反向代理服务，支持多账号轮询、OpenAI 和 Anthropic Messages API 双协议、API Key 鉴权，内置中英文管理后台（React 19 + Ant Design 6，自动跟随浏览器语言，可手动切换）。同时支持接入任意第三方提供商（OpenAI / Anthropic 两种上游协议、模型映射、直连路由），配 SQLite 用量统计与成本估算，提供跨平台桌面端单文件应用（Windows / macOS / Linux），双击即用。
 
 **开发语言**：Go（后端 + 代理 + 桌面壳），React 19 + TypeScript + Ant Design 6（管理后台前端，Vite 构建后 go:embed 内嵌于二进制）。
 
 ## 功能
 
-- **双协议兼容**：同时支持 `/v1/chat/completions`（OpenAI）和 `/v1/messages`（Anthropic Messages API）
-- **多账号轮询**：自动在多个 Cline 账号间切换负载（`round_robin` / `fill` / `random` 策略）
-- **中英文管理后台**：浏览器访问 `/admin/` 管理账号、API Key、模型配置、请求头、代理设置；自动跟随浏览器语言，侧栏可手动切换
-- **动态模型同步**：启动时自动拉取 Cline 官方推荐模型接口（免费/订阅模型），模型变化时弹窗提示，也可在后台手动「从 Cline 同步模型」
-- **自定义模型**：后台可手动添加/删除模型 ID，并自由选择默认模型（未设置时自动回退到第一个免费模型）
-- **API Key 鉴权**：保护代理端点，支持生成/删除多个 API Key
+- **双协议兼容**：同时支持 `/v1/chat/completions`（OpenAI）、`/v1/messages`（Anthropic Messages）与 `/v1/responses`
+- **多账号轮询**：自动在多个 Cline 账号间切换负载（`round_robin` / `fill` / `random` 策略），Cline 残血池与 opencode Zen 免费模型双向故障转移
+- **中英文管理后台**：React 19 + Ant Design 6 单页应用，暗色模式；浏览器访问 `/admin/` 管理账号、API Key、模型、提供商、代理设置；仪表盘带 ECharts 用量趋势/上游分布/模型 Top5 图表
+- **通用提供商（中转站）**：接入任意 OpenAI 兼容或 Anthropic 协议第三方上游，模型映射 + 直连路由，请求/响应/SSE 自动双向转换
+- **SQLite 用量统计**：请求日志与小时聚合桶落 `usage.db`，按模型/上游/Key 的时间序列、错误分类、成本估算（可配模型单价）；原始日志 90 天、聚合 1 年
+- **API Key 管理**：带名称/启停/用量统计的密钥对象，保护代理端点
+- **动态模型同步**：启动时自动拉取 Cline 官方推荐模型接口（免费/订阅模型）与 opencode 免费模型，模型变化时弹窗提示，也可在后台手动同步
+- **自定义模型**：后台可手动添加/删除模型 ID，设置上下文窗口与单价，自由选择默认模型
 - **System Prompt 覆盖**：项目目录下放 `override.md` 则自动替换系统提示词
 - **账号导入/导出**：支持 OAuth 登录、手动 Token、批量文件导入，以及跨设备导出
-- **请求日志**：记录每次请求的 token 用量、耗时、TPS 等指标
+- **请求日志**：每次请求的 token 用量（含缓存命中）、耗时、TTFT、TPS、错误分类
+- **出口代理池**：Cline 与 opencode Zen 独立配置 http/https/socks5 代理池（轮询/随机/填满），跨区限制不再依赖主机 TUN
 - **桌面端**：单文件跨平台桌面应用（Wails v2），关闭窗口即停止服务
 
 ## 快速开始
@@ -178,8 +181,10 @@ git push origin v1.0.0
 
 | 文件 | 说明 |
 |------|------|
-| `.cline-accounts.json` | 账号池、API Key、自定义模型与默认模型 |
-| `.cline-request-logs.json` | 请求日志 |
+| `.cline-accounts.json` | 账号池、API Key（对象格式，自动兼容旧纯字符串）、自定义模型与默认模型 |
+| `usage.db` | SQLite 用量库：请求日志（90 天）+ 小时聚合桶（1 年） |
+| `.cline-providers.json` | 自定义提供商（协议/模型映射/密钥） |
+| `.cline-config.json` | 轮询策略、上游请求头、免费链、模型单价 |
 | `.cline-proxy.json` | Cline 出口代理池配置 |
 | `.cline-zen.json` | opencode（zen）配置，含其出口代理池 |
 | `override.md` | System Prompt 覆盖（可选）|

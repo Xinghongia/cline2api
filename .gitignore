@@ -1,4 +1,7 @@
 .cline-accounts.json
+usage.db
+usage.db-wal
+usage.db-shm
 .cline-credentials.json
 .cline-request-logs.json
 .cline-zen.json

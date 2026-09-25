@@ -212,6 +212,7 @@ export default function Dashboard() {
             extra={totals ? (
               <span>
                 {t('logs.requests', '请求数')} {fmtNum(totals.requests)} · Token {fmtNum(totals.totalTokens)}
+                {summary.data?.estimatedCost ? ` · ≈$${summary.data.estimatedCost.toFixed(4)}` : ''}
                 {totals.cachedTokens > 0 ? ` · ${t('logs.cached', '缓存')} ${fmtNum(totals.cachedTokens)}` : ''}
               </span>
             ) : null}

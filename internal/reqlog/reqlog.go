@@ -21,8 +21,8 @@ const (
 	RawLogRetention = 90 * 24 * time.Hour
 	// HourlyRetention 小时聚合桶保留时长。
 	HourlyRetention = 365 * 24 * time.Hour
-	DefaultLimit     = 50
-	MaxLimit         = 100
+	DefaultLimit    = 50
+	MaxLimit        = 100
 )
 
 // Store 是基于 SQLite 的用量存储：request_logs（原始记录）+ usage_hourly（小时聚合桶）。
@@ -464,9 +464,9 @@ func ListRequestLogs(limit int, cursor string, f *LogFilter) (RequestLogPage, er
 
 // SeriesPoint 是一个时间桶上的聚合值（t 为该桶起点的 Unix 秒）。
 type SeriesPoint struct {
-	T           int64 `json:"t"`
-	Requests    int64 `json:"r"`
-	InputTokens int64 `json:"in"`
+	T            int64 `json:"t"`
+	Requests     int64 `json:"r"`
+	InputTokens  int64 `json:"in"`
 	OutputTokens int64 `json:"out"`
 	CachedTokens int64 `json:"cached"`
 	TotalTokens  int64 `json:"total"`
@@ -634,7 +634,7 @@ func At(i int) types.RequestLog {
 	if s == nil {
 		return types.RequestLog{}
 	}
-	row := s.db.QueryRow(`SELECT ` + selectLogCols + ` FROM request_logs
+	row := s.db.QueryRow(`SELECT `+selectLogCols+` FROM request_logs
 		ORDER BY started_at DESC, id DESC LIMIT 1 OFFSET ?`, i)
 	e, err := scanLog(row.Scan)
 	if err != nil {

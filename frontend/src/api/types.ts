@@ -84,9 +84,15 @@ export interface ModelSyncResult {
   error?: string
 }
 
+export interface ModelPrice {
+  in: number
+  out: number
+}
+
 export interface ModelsResp {
   models: AdminModel[]
   lastSync: ModelSyncResult
+  prices?: Record<string, ModelPrice>
 }
 
 export interface AdminConfig {
@@ -275,4 +281,5 @@ export interface SummaryResp {
   topModels: NamedUsage[]
   upstreams: NamedUsage[]
   topKeys: NamedUsage[]
+  estimatedCost: number
 }

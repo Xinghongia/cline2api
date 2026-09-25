@@ -317,3 +317,14 @@ func GetProviderByID(id string) (CustomProvider, bool) {
 	}
 	return CustomProvider{}, false
 }
+
+// CooldownSnapshot 返回各 provider 模型的冷却截止副本（providerID:model → 时间）。
+func CooldownSnapshot() map[string]time.Time {
+	providersMu.Lock()
+	defer providersMu.Unlock()
+	out := make(map[string]time.Time, len(providerCooldowns))
+	for k, v := range providerCooldowns {
+		out[k] = v
+	}
+	return out
+}

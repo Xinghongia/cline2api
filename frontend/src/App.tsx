@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Layout, Menu, Button, Space, Spin, Typography } from 'antd'
 import type { MenuProps } from 'antd'
 import {
@@ -20,16 +20,17 @@ import { useTranslation } from 'react-i18next'
 
 import { api, UNAUTHORIZED_EVENT } from './api/client'
 import { useAppearance } from './theme'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Accounts from './pages/Accounts'
-import Logs from './pages/Logs'
-import Models from './pages/Models'
-import Providers from './pages/Providers'
-import Upstreams from './pages/Upstreams'
-import Keys from './pages/Keys'
-import Settings from './pages/Settings'
-import About from './pages/About'
+// 路由级代码分割：每个页面独立 chunk，ECharts 等重组件只随用到的页面加载
+const Login = lazy(() => import('./pages/Login'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Accounts = lazy(() => import('./pages/Accounts'))
+const Logs = lazy(() => import('./pages/Logs'))
+const Models = lazy(() => import('./pages/Models'))
+const Providers = lazy(() => import('./pages/Providers'))
+const Upstreams = lazy(() => import('./pages/Upstreams'))
+const Keys = lazy(() => import('./pages/Keys'))
+const Settings = lazy(() => import('./pages/Settings'))
+const About = lazy(() => import('./pages/About'))
 
 const { Sider, Content, Header } = Layout
 
@@ -114,14 +115,16 @@ function AppShell() {
           </Space>
         </Header>
         <Content style={{ padding: '8px 24px 40px', overflow: 'auto' }}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            {NAV_ITEMS.map((item) => {
-              const Page = ROUTES[item.key]
-              return <Route key={item.key} path={item.key} element={<Page />} />
-            })}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
+          <Suspense fallback={<div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              {NAV_ITEMS.map((item) => {
+                const Page = ROUTES[item.key]
+                return <Route key={item.key} path={item.key} element={<Page />} />
+              })}
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            </Routes>
+          </Suspense>
         </Content>
       </Layout>
     </Layout>

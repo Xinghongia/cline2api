@@ -36,7 +36,7 @@ func (f freeModelRoundTripper) RoundTrip(req *http.Request) (*http.Response, err
 
 func TestUpstreamModelFor(t *testing.T) {
 	p := CustomProvider{
-		ModelIDs:    []string{"gpt-4o", "claude-3-5"},
+		ModelIDs:     []string{"gpt-4o", "claude-3-5"},
 		ModelMapping: map[string]string{"claude-3-5": "claude-3-5-sonnet-20241022"},
 	}
 	if got := p.UpstreamModelFor("gpt-4o"); got != "gpt-4o" {

@@ -22,15 +22,18 @@ Cline2API is a reverse proxy for the Cline API with multi-account rotation, dual
 
 ## Features
 
-- **Dual protocol**: serves both `/v1/chat/completions` (OpenAI) and `/v1/messages` (Anthropic Messages API)
-- **Multi-account rotation**: load-balances across Cline accounts (`round_robin` / `fill` / `random`)
-- **Bilingual admin panel**: `/admin/` manages accounts, API keys, models, headers and proxy settings; auto-follows your browser language, manually switchable in the sidebar
-- **Dynamic model sync**: fetches the official Cline recommended-models API on startup (free / cline-pass / recommended); a popup notifies you when the model list changes, and you can also click "Sync Models from Cline" in the panel anytime
-- **Custom models**: add/remove model IDs manually and pick a default model (falls back to the first free model automatically)
-- **API key auth**: protects proxy endpoints; generate/delete multiple API keys
-- **System Prompt override**: place an `override.md` next to the executable to replace the system prompt for all requests
-- **Account import/export**: OAuth login, manual tokens, batch file import, and cross-device export
-- **Request logs**: per-request token usage, latency, TPS, and more
+- **Dual protocol**: serves `/v1/chat/completions` (OpenAI), `/v1/messages` (Anthropic Messages) and `/v1/responses`
+- **Multi-account rotation**: load-balances across Cline accounts (`round_robin` / `fill` / `random`), with bidirectional failover between the Cline pool and opencode Zen free models
+- **Bilingual admin panel**: React 19 + Ant Design 6 SPA with dark mode; ECharts usage trends, upstream split, top models; OAuth device login, batch import/export, log filters
+- **Generic providers (relay)**: plug in any OpenAI-compatible or Anthropic-protocol upstream with model mapping and direct routing; request/response/SSE converted automatically
+- **SQLite usage stats**: request logs + hourly buckets in `usage.db`; time series by model/upstream/key, error classes, cost estimation (configurable unit prices); 90-day raw logs, 1-year aggregates
+- **API key management**: key objects with name/enable toggles/usage stats
+- **Dynamic model sync**: fetches the official Cline recommended-models API and opencode free models on startup; manual sync supported
+- **Custom models**: add/remove model IDs, set context windows and unit prices, pick a default model
+- **System Prompt override**: place an `override.md` next to the executable to replace the system prompt
+- **Account import/export**: OAuth login, manual tokens, batch file import, cross-device export
+- **Request logs**: per-request token usage (incl. cached), latency, TTFT, TPS, error classes
+- **Egress proxy pools**: separate http/https/socks5 pools for Cline and opencode Zen
 - **Desktop app**: single-file cross-platform app (Wails v2); closing the window stops the service
 
 ## Quick Start

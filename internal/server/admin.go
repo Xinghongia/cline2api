@@ -20,8 +20,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
+	"time"
 )
 
 // In-memory OAuth login state for async browser login
@@ -94,6 +94,7 @@ func registerAdminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/api/stats/summary", auth(handleStatsSummary))
 	mux.HandleFunc("/admin/api/keys/delete", auth(handleAdminDeleteKey))
 	mux.HandleFunc("/admin/api/models", auth(handleAdminModels))
+	mux.HandleFunc("/admin/api/models/price", auth(handleAdminModelPrice))
 	mux.HandleFunc("/admin/api/models/sync", auth(handleAdminModelSync))
 	mux.HandleFunc("/admin/api/opencode/config", auth(handleOpenCodeConfig))
 	mux.HandleFunc("/admin/api/opencode/config/update", auth(handleOpenCodeConfigUpdate))
@@ -924,9 +925,9 @@ func handleAdminUpdateKey(w http.ResponseWriter, r *http.Request) {
 	}
 	defer r.Body.Close()
 	var req struct {
-		Key     string `json:"key"`
+		Key     string  `json:"key"`
 		Name    *string `json:"name"`
-		Enabled *bool  `json:"enabled"`
+		Enabled *bool   `json:"enabled"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil || req.Key == "" {
 		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_json")})
@@ -1164,6 +1165,7 @@ func handleAdminModels(w http.ResponseWriter, r *http.Request) {
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
 		"models":   models,
 		"lastSync": sync,
+		"prices":   proxyconfig.PricesSnapshot(),
 	}})
 }
 
@@ -1705,7 +1707,16 @@ func handleAdminModelSync(w http.ResponseWriter, r *http.Request) {
 // ============================================================================
 
 func handleProvidersList(w http.ResponseWriter, r *http.Request) {
-	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"providers": providers.ListProviders()}})
+	provs := providers.ListProviders()
+	cooldowns := providers.CooldownSnapshot()
+	active := map[string]string{}
+	now := time.Now()
+	for k, until := range cooldowns {
+		if until.After(now) {
+			active[k] = until.Format(time.RFC3339)
+		}
+	}
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"providers": provs, "cooldowns": active}})
 }
 
 func handleProviderSave(w http.ResponseWriter, r *http.Request) {
@@ -1927,11 +1938,55 @@ func handleStatsSummary(w http.ResponseWriter, r *http.Request) {
 		writeAPI(w, http.StatusInternalServerError, apiResponse{Error: err.Error()})
 		return
 	}
+
+	// 成本估算：按模型分组的 in/out 用量 × 单价（USD / 1M tokens）
+	var cost float64
+	prices := proxyconfig.PricesSnapshot()
+	if len(prices) > 0 {
+		if series, serr := reqlog.SeriesQuery("hour", "model", from, now.Add(time.Minute), filter); serr == nil {
+			for _, g := range series {
+				pr, ok := prices[g.Name]
+				if !ok {
+					continue
+				}
+				for _, p := range g.Points {
+					cost += float64(p.InputTokens)*pr.In/1e6 + float64(p.OutputTokens)*pr.Out/1e6
+				}
+			}
+		}
+	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
-		"range":     q.Get("range"),
-		"totals":    totals,
-		"topModels": models,
-		"upstreams": upstreams,
-		"topKeys":   keys,
+		"range":         q.Get("range"),
+		"totals":        totals,
+		"topModels":     models,
+		"upstreams":     upstreams,
+		"topKeys":       keys,
+		"estimatedCost": cost,
 	}})
+}
+
+// POST /admin/api/models/price  body: { id, priceIn?, priceOut? }
+// 设置模型单价（USD / 1M tokens）；两项同时为 0 清除该模型价格。
+func handleAdminModelPrice(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeAPI(w, http.StatusMethodNotAllowed, apiResponse{Error: tAPI(r, "method_not_allowed")})
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: err.Error()})
+		return
+	}
+	defer r.Body.Close()
+	var req struct {
+		ID       string  `json:"id"`
+		PriceIn  float64 `json:"priceIn"`
+		PriceOut float64 `json:"priceOut"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil || req.ID == "" {
+		writeAPI(w, http.StatusBadRequest, apiResponse{Error: tAPI(r, "invalid_json")})
+		return
+	}
+	proxyconfig.SetModelPrice(req.ID, req.PriceIn, req.PriceOut)
+	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "price_saved")})
 }

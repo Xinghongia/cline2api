@@ -84,6 +84,10 @@ export default function Models() {
     },
     onError: (err) => void message.error(err.message),
   })
+  const setPrice = useMutation({
+    mutationFn: (v: { id: string; priceIn: number; priceOut: number }) => api.post("/models/price", v),
+    onError: (err) => void message.error(err.message),
+  })
   const setCtx = useMutation({
     mutationFn: (values: { id: string; context: number; output: number }) => api.post('/models/context', values),
     onSuccess: () => {
@@ -146,13 +150,23 @@ export default function Models() {
         row.context || row.output ? `${row.context ?? '-'} / ${row.output ?? '-'}` : '-',
     },
     {
+      title: t('models.priceCol', '单价'),
+      key: 'price',
+      width: 120,
+      render: (_: unknown, row: AdminModel) => {
+        const pr = models.data?.prices?.[row.id]
+        return pr ? `$${pr.in} / $${pr.out}` : '-'
+      },
+    },
+    {
       title: t('models.actions', '操作'),
       key: 'actions',
       width: 170,
       render: (_: unknown, row: AdminModel) => (
         <Space size={0}>
           <Button type="link" size="small" onClick={() => {
-            ctxForm.setFieldsValue({ context: row.context, output: row.output })
+            const pr = models.data?.prices?.[row.id] ?? { in: 0, out: 0 }
+            ctxForm.setFieldsValue({ context: row.context, output: row.output, priceIn: pr.in, priceOut: pr.out })
             setCtxEditing(row)
           }}>
             {t('models.setContext', '上下文')}
@@ -246,13 +260,18 @@ export default function Models() {
         title={`${t('models.setContext', '上下文')}: ${ctxEditing?.id ?? ''}`}
         open={ctxEditing !== null}
         onCancel={() => setCtxEditing(null)}
-        onOk={() =>
+        onOk={() => {
           setCtx.mutate({
             id: ctxEditing!.id,
-            context: Number(ctxForm.getFieldValue('context')) || 0,
-            output: Number(ctxForm.getFieldValue('output')) || 0,
+            context: Number(ctxForm.getFieldValue("context")) || 0,
+            output: Number(ctxForm.getFieldValue("output")) || 0,
           })
-        }
+          setPrice.mutate({
+            id: ctxEditing!.id,
+            priceIn: Number(ctxForm.getFieldValue("priceIn")) || 0,
+            priceOut: Number(ctxForm.getFieldValue("priceOut")) || 0,
+          })
+        }}
         confirmLoading={setCtx.isPending}
       >
         <Form form={ctxForm} layout="vertical">
@@ -261,6 +280,12 @@ export default function Models() {
           </Form.Item>
           <Form.Item name="output" label={t('models.outputTokens', '最大输出（0 = 恢复自动）')}>
             <InputNumber style={{ width: '100%' }} min={0} />
+          </Form.Item>
+          <Form.Item name="priceIn" label={t("models.priceIn", "输入单价（USD / 1M tokens）")}>
+            <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
+          </Form.Item>
+          <Form.Item name="priceOut" label={t("models.priceOut", "输出单价（USD / 1M tokens）")}>
+            <InputNumber style={{ width: "100%" }} min={0} step={0.1} />
           </Form.Item>
         </Form>
         <p style={{ color: '#999' }}>{t('models.ctxHint', '填 0 会解锁被远程同步锁定的元数据，恢复内置默认值。')}</p>

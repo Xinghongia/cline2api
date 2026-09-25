@@ -21,6 +21,14 @@ type Config struct {
 	// 空 = 使用内置 free 链（glm-5.3-flash → deepseek-v4-flash → longcat-2.0）。
 	ModelChain []string `json:"modelChain,omitempty"`
 	OnlyFree   bool     `json:"onlyFree"` // 只显示免费模型：开启后 /models、/v1/models 仅返回免费模型
+	// ModelPrices 模型单价（USD / 1M tokens），用于成本估算；独立于模型同步避免被覆盖
+	ModelPrices map[string]ModelPrice `json:"modelPrices,omitempty"`
+}
+
+// ModelPrice 是单个模型的双向单价。
+type ModelPrice struct {
+	In  float64 `json:"in"`
+	Out float64 `json:"out"`
 }
 
 var (
@@ -86,4 +94,30 @@ func Set(c *Config) {
 	defer mu.Unlock()
 	current = c
 	saveLocked()
+}
+
+// SetModelPrice 设置模型单价；in/out 同时为 0 时删除该条目。
+func SetModelPrice(id string, in, out float64) {
+	mu.Lock()
+	defer mu.Unlock()
+	if current.ModelPrices == nil {
+		current.ModelPrices = map[string]ModelPrice{}
+	}
+	if in == 0 && out == 0 {
+		delete(current.ModelPrices, id)
+	} else {
+		current.ModelPrices[id] = ModelPrice{In: in, Out: out}
+	}
+	saveLocked()
+}
+
+// PricesSnapshot 返回单价表副本（id → 双向单价，单位 USD / 1M tokens）。
+func PricesSnapshot() map[string]ModelPrice {
+	mu.Lock()
+	defer mu.Unlock()
+	out := make(map[string]ModelPrice, len(current.ModelPrices))
+	for k, v := range current.ModelPrices {
+		out[k] = v
+	}
+	return out
 }

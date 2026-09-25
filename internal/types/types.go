@@ -52,7 +52,7 @@ type ModelStat struct {
 type AccountPool struct {
 	Accounts     []*Account `json:"accounts"`
 	CurrentIdx   int        `json:"currentIdx"`
-	Keys         []APIKey    `json:"keys,omitempty"`
+	Keys         []APIKey   `json:"keys,omitempty"`
 	Models       []Model    `json:"models,omitempty"`
 	DefaultModel string     `json:"defaultModel,omitempty"`
 	// 访问设置：监听地址与管理后台密码（后台 UI 保存）

@@ -159,7 +159,10 @@
     "contextTokens": "Context window (0 = auto)",
     "outputTokens": "Max output (0 = auto)",
     "ctxSaved": "Context settings saved",
-    "ctxHint": "Setting 0 unlocks metadata locked by remote sync and restores built-in defaults."
+    "ctxHint": "Setting 0 unlocks metadata locked by remote sync and restores built-in defaults.",
+    "priceCol": "Price",
+    "priceIn": "Input price (USD / 1M tokens)",
+    "priceOut": "Output price (USD / 1M tokens)"
   },
   "providers": {
     "subtitle": "Custom OpenAI-compatible upstreams; matched models are preferred over the Cline account pool",
@@ -192,7 +195,8 @@
     "mapping": "Model mapping (optional)",
     "mappingFrom": "Exposed ID",
     "mappingTo": "Upstream real ID",
-    "addMapping": "Add mapping"
+    "addMapping": "Add mapping",
+    "cooling": "Cooling"
   },
   "upstreams": {
     "subtitle": "opencode Zen and Cline egress proxy configuration",

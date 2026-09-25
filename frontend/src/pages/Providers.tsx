@@ -11,6 +11,7 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   message,
 } from 'antd'
 import { ApiOutlined, PlusOutlined } from '@ant-design/icons'
@@ -20,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import type { CustomProvider, ProviderPreset, ProviderTestResult } from '../api/types'
 import PageHeader from '../components/PageHeader'
+import { fmtTime } from '../utils'
 
 const EMPTY: CustomProvider = {
   id: '',
@@ -261,8 +263,8 @@ export default function Providers() {
   const [editing, setEditing] = useState<CustomProvider | null>(null)
 
   const providers = useQuery({
-    queryKey: ['providers'],
-    queryFn: () => api.get<{ providers: CustomProvider[] }>('/providers'),
+    queryKey: ["providers"],
+    queryFn: () => api.get<{ providers: CustomProvider[]; cooldowns: Record<string, string> }>("/providers"),
   })
   const presets = useQuery({
     queryKey: ['provider-presets'],
@@ -313,6 +315,15 @@ export default function Providers() {
             {row.protocol === 'anthropic' ? 'anthropic' : 'openai'}
           </Tag>
           {row.free ? <Tag color="green">{t('models.free', '免费')}</Tag> : null}
+          {(() => {
+            const cooling = Object.entries(providers.data?.cooldowns ?? {}).filter(([k]) => k.startsWith(row.id + ':'))
+            if (cooling.length === 0) return null
+            return (
+              <Tooltip title={cooling.map(([k, v]) => `${k} → ${fmtTime(v)}`).join('\n')}>
+                <Tag color="orange">{t('providers.cooling', '冷却')} {cooling.length}</Tag>
+              </Tooltip>
+            )
+          })()}
         </Space>
       ),
     },
