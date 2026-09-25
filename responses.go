@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -287,7 +288,7 @@ func (s *responsesSSEWriter) event(event string, data any) {
 
 // chatStreamToResponses 逐行读取上游 chat SSE，转换为完整 Responses 事件生命周期。
 // onUsage 在收到上游 usage 时回调（用于请求日志/账号统计）。
-func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, reqLog *RequestLog, acc *Account) {
+func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, reqLog *types.RequestLog, acc *types.Account) {
 	s := newResponsesSSE(w)
 	s.event("response.created", map[string]any{"type": "response.created"})
 	s.event("response.in_progress", map[string]any{"type": "response.in_progress"})
@@ -297,7 +298,7 @@ func chatStreamToResponses(w http.ResponseWriter, upstream *http.Response, reqLo
 	var curCallEmitted bool
 	var curArgs strings.Builder
 	var outText strings.Builder
-	var latestUsage tokenUsage
+	var latestUsage types.TokenUsage
 	firstOutputAt := time.Time{}
 	startedAt := time.Now()
 	if reqLog != nil {
@@ -440,8 +441,8 @@ func (s *responsesSSEWriter) emitDelta(delta map[string]any, textEmitted *bool, 
 	}
 }
 
-// usageToResponses 把聚合的 tokenUsage 转成 Responses usage 结构。
-func usageToResponses(u tokenUsage) map[string]any {
+// usageToResponses 把聚合的 types.TokenUsage 转成 Responses usage 结构。
+func usageToResponses(u types.TokenUsage) map[string]any {
 	cached := any(0)
 	if u.Cached > 0 {
 		cached = u.Cached
@@ -479,7 +480,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 	isStream, _ := params["stream"].(bool)
 	log.Printf("  responses: model=%s stream=%v", model, isStream)
 
-	reqLog := RequestLog{StartedAt: time.Now(), Protocol: "responses", Model: model, Stream: isStream}
+	reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "responses", Model: model, Stream: isStream}
 
 	chat := responsesToChat(params)
 	// 清洗畸形 tool_calls（空 function.name / 孤儿 tool 结果），避免上游 400
@@ -491,7 +492,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 
 	switch route {
 	case "reject":
-		finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "paid zen model rejected")
+		finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "paid zen model rejected")
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": map[string]string{
 				"message": fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", chatModel),
@@ -531,7 +532,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 					}
 					var raw map[string]any
 					if err := json.NewDecoder(fbResp.Body).Decode(&raw); err != nil {
-						finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+						finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 						writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 						return
 					}
@@ -545,7 +546,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 				err = fbErr
 			}
 			log.Printf("  responses api error: %v", err)
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -564,7 +565,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		var raw map[string]any
 		if err := json.NewDecoder(upResp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 			return
 		}
@@ -584,7 +585,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			log.Printf("  responses api error: %v", err)
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, clineErrorHTTPStatus(err), map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -607,7 +608,7 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 		}
 		var raw map[string]any
 		if err := json.NewDecoder(upResp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 			})

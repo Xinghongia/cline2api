@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -104,7 +105,7 @@ func remoteProvider(id string) string {
 // syncClineModels 执行一次模型同步并持久化：
 //  1. 拉取远程推荐模型（free / clinePass / recommended）
 //  2. 与池中现有 remote 模型比较，得到 added / removed
-//  3. 更新 AccountPool.Models（替换 Source=remote 的旧条目），保存
+//  3. 更新 types.AccountPool.Models（替换 Source=remote 的旧条目），保存
 //  4. 记录 lastModelSync 供管理后台弹窗
 //
 // 任何一步失败都会把错误写进 lastModelSync，不阻塞服务启动。
@@ -134,7 +135,7 @@ func syncClineModels() modelSyncResult {
 	}
 
 	// 组装远程模型列表（去重，free 数组在前）
-	var remote []Model
+	var remote []types.Model
 	seen := make(map[string]bool)
 	addGroup := func(group []clineRemoteModel, inFree bool) {
 		for _, m := range group {
@@ -142,7 +143,7 @@ func syncClineModels() modelSyncResult {
 				continue
 			}
 			seen[m.ID] = true
-			remote = append(remote, Model{
+			remote = append(remote, types.Model{
 				ID:       m.ID,
 				Provider: remoteProvider(m.ID),
 				Cost:     remoteCost(m, inFree),
@@ -164,7 +165,7 @@ func syncClineModels() modelSyncResult {
 	p := loadPool()
 	poolMu.Lock()
 	oldRemote := make(map[string]bool)
-	var kept []Model
+	var kept []types.Model
 	for _, m := range p.Models {
 		if m.Source == "remote" {
 			oldRemote[m.ID] = true

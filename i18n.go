@@ -67,7 +67,7 @@ var apiMessages = map[string]map[locale]string{
 	},
 	"account_added": {
 		localeZH: "账号 %s 已添加",
-		localeEN: "Account %s added",
+		localeEN: "types.Account %s added",
 	},
 	"account_id_required": {
 		localeZH: "必须提供 accountId",
@@ -75,11 +75,11 @@ var apiMessages = map[string]map[locale]string{
 	},
 	"account_deleted": {
 		localeZH: "账号已删除",
-		localeEN: "Account deleted",
+		localeEN: "types.Account deleted",
 	},
 	"account_not_found": {
 		localeZH: "账号不存在",
-		localeEN: "Account not found",
+		localeEN: "types.Account not found",
 	},
 	"session_id_required": {
 		localeZH: "必须提供 sessionId",
@@ -103,7 +103,7 @@ var apiMessages = map[string]map[locale]string{
 	},
 	"account_exists": {
 		localeZH: "账号 %s 已存在，跳过重复添加",
-		localeEN: "Account %s already exists, skipped duplicate",
+		localeEN: "types.Account %s already exists, skipped duplicate",
 	},
 	"url_required": {
 		localeZH: "必须提供 url",
@@ -127,7 +127,7 @@ var apiMessages = map[string]map[locale]string{
 	},
 	"account_reset": {
 		localeZH: "账号已重置",
-		localeEN: "Account reset",
+		localeEN: "types.Account reset",
 	},
 	"key_deleted": {
 		localeZH: "密钥已删除",
@@ -179,7 +179,7 @@ var apiMessages = map[string]map[locale]string{
 	},
 	"model_sync_failed": {
 		localeZH: "模型同步失败",
-		localeEN: "Model sync failed",
+		localeEN: "types.Model sync failed",
 	},
 	// opencode zen 相关
 	"opencode_config_saved": {

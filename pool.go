@@ -1,11 +1,12 @@
 package main
 
 import (
+	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -13,49 +14,15 @@ import (
 )
 
 var (
-	pool     *AccountPool
+	pool     *types.AccountPool
 	poolMu   sync.Mutex
 	poolPath string
 )
 
 func init() {
-	poolPath = resolveDataPath(".cline-accounts.json")
+	poolPath = apphome.ResolveDataPath(".cline-accounts.json")
 }
-
-// resolveDataPath 按优先级查找数据文件：exe 目录 → 工作目录 → 用户主目录。
-// 找到则用该路径（兼容旧版本在项目根目录存储的文件）；
-// 都找不到则回退到 exe 目录（首次运行会在该位置创建）。
-func resolveDataPath(filename string) string {
-	// 1. exe 所在目录
-	if exe, err := os.Executable(); err == nil {
-		p := filepath.Join(filepath.Dir(exe), filename)
-		if fileExists(p) {
-			return p
-		}
-	}
-	// 2. 当前工作目录
-	if pwd, err := os.Getwd(); err == nil {
-		p := filepath.Join(pwd, filename)
-		if fileExists(p) {
-			return p
-		}
-	}
-	// 3. 用户主目录下的 .cline2api/
-	if home, err := os.UserHomeDir(); err == nil {
-		p := filepath.Join(home, ".cline2api", filename)
-		if fileExists(p) {
-			return p
-		}
-	}
-	// 回退：exe 目录（首次运行在此创建）
-	if exe, err := os.Executable(); err == nil {
-		return filepath.Join(filepath.Dir(exe), filename)
-	}
-	pwd, _ := os.Getwd()
-	return filepath.Join(pwd, filename)
-}
-
-func loadPool() *AccountPool {
+func loadPool() *types.AccountPool {
 	poolMu.Lock()
 	defer poolMu.Unlock()
 
@@ -65,24 +32,24 @@ func loadPool() *AccountPool {
 
 	data, err := os.ReadFile(poolPath)
 	if err != nil {
-		pool = &AccountPool{Accounts: []*Account{}, Keys: []string{}, Models: []Model{}}
+		pool = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}, Models: []types.Model{}}
 		return pool
 	}
 
-	var p AccountPool
+	var p types.AccountPool
 	if err := json.Unmarshal(data, &p); err != nil {
-		pool = &AccountPool{Accounts: []*Account{}, Keys: []string{}, Models: []Model{}}
+		pool = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}, Models: []types.Model{}}
 		return pool
 	}
 
 	if p.Accounts == nil {
-		p.Accounts = []*Account{}
+		p.Accounts = []*types.Account{}
 	}
 	if p.Keys == nil {
 		p.Keys = []string{}
 	}
 	if p.Models == nil {
-		p.Models = []Model{}
+		p.Models = []types.Model{}
 	}
 	pool = &p
 	return pool
@@ -95,7 +62,7 @@ func savePool() {
 	}
 }
 
-func addAccount(acc *Account) {
+func addAccount(acc *types.Account) {
 	p := loadPool()
 	poolMu.Lock()
 	p.Accounts = append(p.Accounts, acc)
@@ -105,7 +72,7 @@ func addAccount(acc *Account) {
 
 // findAccountByRefreshToken 按 refreshToken 查找已有账号（不存在返回 nil）。
 // 用于导入时的去重：同一个 refreshToken 只应存在一个账号。
-func findAccountByRefreshToken(refreshToken string) *Account {
+func findAccountByRefreshToken(refreshToken string) *types.Account {
 	refreshToken = strings.TrimSpace(refreshToken)
 	if refreshToken == "" {
 		return nil
@@ -153,7 +120,7 @@ func removeAccount(accountID string) bool {
 	return false
 }
 
-func getAccountByID(accountID string) *Account {
+func getAccountByID(accountID string) *types.Account {
 	p := loadPool()
 	poolMu.Lock()
 	defer poolMu.Unlock()
@@ -166,7 +133,7 @@ func getAccountByID(accountID string) *Account {
 	return nil
 }
 
-func refreshAccountToken(acc *Account) error {
+func refreshAccountToken(acc *types.Account) error {
 	resp, err := refreshClineToken(acc.RefreshToken)
 	if err != nil {
 		acc.Status = "expired"
@@ -184,7 +151,7 @@ func refreshAccountToken(acc *Account) error {
 	return nil
 }
 
-func pickAccount() *Account {
+func pickAccount() *types.Account {
 	p := loadPool()
 	poolMu.Lock()
 	defer poolMu.Unlock()
@@ -194,15 +161,15 @@ func pickAccount() *Account {
 // pickAccountForModel 按轮询/策略挑选一个「该模型未处于模型级冷却」的账号；
 // 所有 active 账号对该模型都冷却时回退到普通 pickAccount（请求会得到模型级 429 提示）。
 // 空模型名等同于 pickAccount。
-func pickAccountForModel(model string) *Account {
+func pickAccountForModel(model string) *types.Account {
 	return pickAccountForModelWithFallback(model, true)
 }
 
-func pickAccountForModelStrict(model string) *Account {
+func pickAccountForModelStrict(model string) *types.Account {
 	return pickAccountForModelWithFallback(model, false)
 }
 
-func pickAccountForModelWithFallback(model string, fallbackToActive bool) *Account {
+func pickAccountForModelWithFallback(model string, fallbackToActive bool) *types.Account {
 	if model == "" {
 		return pickAccount()
 	}
@@ -211,7 +178,7 @@ func pickAccountForModelWithFallback(model string, fallbackToActive bool) *Accou
 	poolMu.Lock()
 	defer poolMu.Unlock()
 
-	active := make([]*Account, 0)
+	active := make([]*types.Account, 0)
 	for _, a := range p.Accounts {
 		if a.Status == "active" {
 			active = append(active, a)
@@ -222,7 +189,7 @@ func pickAccountForModelWithFallback(model string, fallbackToActive bool) *Accou
 	}
 
 	// 该模型未冷却的账号列表
-	eligible := make([]*Account, 0, len(active))
+	eligible := make([]*types.Account, 0, len(active))
 	for _, a := range active {
 		until, cool := a.ModelCooldowns[model]
 		if !cool || time.Now().After(until) {
@@ -241,7 +208,7 @@ func pickAccountForModelWithFallback(model string, fallbackToActive bool) *Accou
 	}
 
 	cfg := getProxyConfig()
-	var acc *Account
+	var acc *types.Account
 	switch cfg.Strategy {
 	case "fill":
 		acc = eligible[0]
@@ -263,7 +230,7 @@ func pickAccountForModelWithFallback(model string, fallbackToActive bool) *Accou
 // 历史用量最少的账号（并清掉已过期的冷却记录）。等量时按轮询索引取，保持原有
 // 公平性；全部不可用返回 nil。供回退链上的非首选模型使用：流量应摊到较少
 // 使用的账号上，而不是每次都砸在第一个可用账号。
-func pickAccountForModelLeastUsed(model string) *Account {
+func pickAccountForModelLeastUsed(model string) *types.Account {
 	if model == "" {
 		return pickAccount()
 	}
@@ -272,7 +239,7 @@ func pickAccountForModelLeastUsed(model string) *Account {
 	poolMu.Lock()
 	defer poolMu.Unlock()
 
-	var best *Account
+	var best *types.Account
 	var bestCount int64
 	for _, a := range p.Accounts {
 		if a.Status != "active" {
@@ -361,8 +328,8 @@ func sortModelsByAvailability(chain []string) []string {
 }
 
 // pickAccountLocked 在已持有 poolMu 的前提下执行普通轮询挑选（供 pickAccountForModel 回退用）。
-func pickAccountLocked(p *AccountPool) *Account {
-	active := make([]*Account, 0)
+func pickAccountLocked(p *types.AccountPool) *types.Account {
+	active := make([]*types.Account, 0)
 	for _, a := range p.Accounts {
 		if a.Status == "active" {
 			active = append(active, a)
@@ -372,7 +339,7 @@ func pickAccountLocked(p *AccountPool) *Account {
 		return nil
 	}
 	cfg := getProxyConfig()
-	var acc *Account
+	var acc *types.Account
 	switch cfg.Strategy {
 	case "fill":
 		acc = active[0]
@@ -390,7 +357,7 @@ func pickAccountLocked(p *AccountPool) *Account {
 	return acc
 }
 
-func ensureAccountToken(acc *Account) (string, error) {
+func ensureAccountToken(acc *types.Account) (string, error) {
 	if acc.AccessToken != "" && time.Now().UnixMilli() < acc.ExpiresAt {
 		return acc.AccessToken, nil
 	}
@@ -402,15 +369,15 @@ func ensureAccountToken(acc *Account) (string, error) {
 	return acc.AccessToken, nil
 }
 
-func listAccounts() []*Account {
+func listAccounts() []*types.Account {
 	p := loadPool()
 	poolMu.Lock()
 	defer poolMu.Unlock()
 
-	result := make([]*Account, len(p.Accounts))
+	result := make([]*types.Account, len(p.Accounts))
 	for i, a := range p.Accounts {
 		// Don't expose tokens
-		cp := &Account{
+		cp := &types.Account{
 			AccountID:        a.AccountID,
 			Email:            a.Email,
 			Status:           a.Status,
@@ -425,7 +392,7 @@ func listAccounts() []*Account {
 		}
 		// 按模型细分统计（脱敏拷贝）
 		if len(a.ModelStats) > 0 {
-			cp.ModelStats = make(map[string]*ModelStat, len(a.ModelStats))
+			cp.ModelStats = make(map[string]*types.ModelStat, len(a.ModelStats))
 			for mid, st := range a.ModelStats {
 				sc := *st
 				cp.ModelStats[mid] = &sc
@@ -443,9 +410,9 @@ func listAccounts() []*Account {
 	return result
 }
 
-func addAccountFromDeviceAuth() (*Account, error) {
+func addAccountFromDeviceAuth() (*types.Account, error) {
 	fmt.Println()
-	fmt.Println("=== Add New Cline Account (OAuth) ===")
+	fmt.Println("=== Add New Cline types.Account (OAuth) ===")
 	fmt.Println()
 
 	device, err := workosDeviceAuth()
@@ -497,7 +464,7 @@ func addAccountFromDeviceAuth() (*Account, error) {
 		email = cline.Data.UserInfo.Email
 	}
 
-	acc := &Account{
+	acc := &types.Account{
 		AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 		Email:        email,
 		RefreshToken: cline.Data.RefreshToken,
@@ -508,6 +475,6 @@ func addAccountFromDeviceAuth() (*Account, error) {
 	}
 
 	addAccount(acc)
-	fmt.Printf("  Account added! Email: %s\n", email)
+	fmt.Printf("  types.Account added! Email: %s\n", email)
 	return acc, nil
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,7 +50,7 @@ var (
 )
 
 func init() {
-	providersFilePath = resolveDataPath(".cline-providers.json")
+	providersFilePath = apphome.ResolveDataPath(".cline-providers.json")
 }
 
 func loadProviders() {
@@ -270,7 +272,7 @@ func callProvider(p *CustomProvider, params map[string]any, stream bool) (*http.
 }
 
 // handleProviderStreamResponse 转发 provider 的流式响应（OpenAI 格式）。
-func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response, reqLog *RequestLog) {
+func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response, reqLog *types.RequestLog) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -281,7 +283,7 @@ func handleProviderStreamResponse(w http.ResponseWriter, upstream *http.Response
 		return
 	}
 	reader := bufio.NewReader(upstream.Body)
-	var latestUsage tokenUsage
+	var latestUsage types.TokenUsage
 	var firstOutputAt time.Time
 	for {
 		line, err := reader.ReadString('\n')

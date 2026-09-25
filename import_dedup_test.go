@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"testing"
 	"time"
 )
@@ -10,7 +11,7 @@ func withEmptyAccounts(t *testing.T) {
 	t.Helper()
 	p := loadPool()
 	old := p.Accounts
-	p.Accounts = []*Account{}
+	p.Accounts = []*types.Account{}
 	savePool()
 	t.Cleanup(func() {
 		q := loadPool()
@@ -30,7 +31,7 @@ func TestFindAccountByRefreshToken(t *testing.T) {
 		t.Fatal("accountExists should be false for unknown token")
 	}
 
-	addAccount(&Account{
+	addAccount(&types.Account{
 		AccountID:    "acc_test_1",
 		Email:        "a@example.com",
 		RefreshToken: tok,
@@ -54,7 +55,7 @@ func TestFindAccountByRefreshToken(t *testing.T) {
 func TestIsDuplicateImportToken(t *testing.T) {
 	withEmptyAccounts(t)
 
-	addAccount(&Account{
+	addAccount(&types.Account{
 		AccountID:    "acc_existing",
 		Email:        "b@example.com",
 		RefreshToken: "existing-token",

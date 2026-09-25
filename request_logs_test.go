@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"testing"
 	"time"
 )
@@ -8,7 +9,7 @@ import (
 func TestPruneRequestLogsBoundsAgeAndCount(t *testing.T) {
 	now := time.Now()
 	old := now.Add(-31 * 24 * time.Hour)
-	entries := []RequestLog{
+	entries := []types.RequestLog{
 		{ID: "old", StartedAt: old},
 		{ID: "keep1", StartedAt: now.Add(-time.Hour)},
 		{ID: "keep2", StartedAt: now.Add(-2 * time.Hour)},
@@ -28,9 +29,9 @@ func TestPruneRequestLogsBoundsAgeAndCount(t *testing.T) {
 
 func TestListRequestLogsCursorPagination(t *testing.T) {
 	now := time.Now()
-	entries := make([]RequestLog, 0, 75)
+	entries := make([]types.RequestLog, 0, 75)
 	for i := 0; i < 75; i++ {
-		entries = append(entries, RequestLog{
+		entries = append(entries, types.RequestLog{
 			ID:        "req_" + string(rune('a'+i)),
 			StartedAt: now.Add(-time.Duration(75-i) * time.Second),
 		})

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -290,7 +291,7 @@ type compactOutcome struct {
 }
 
 // maybeCompact 估算超限时执行摘要压缩并原地改写 params["messages"]。
-func maybeCompact(params map[string]any, zm Model, sessionID string) compactOutcome {
+func maybeCompact(params map[string]any, zm types.Model, sessionID string) compactOutcome {
 	cfg := getZenConfig()
 	if !cfg.Compaction.Auto {
 		return compactOutcome{}
@@ -434,7 +435,7 @@ func findExistingSummary(messages []any, upTo int) string {
 }
 
 // fallbackTruncate 摘要失败时退回尾部截断：保留 system + 尾部消息至 60% 预算。
-func fallbackTruncate(params map[string]any, zm Model) compactOutcome {
+func fallbackTruncate(params map[string]any, zm types.Model) compactOutcome {
 	messages, _ := params["messages"].([]any)
 	if len(messages) == 0 {
 		return compactOutcome{}

@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"cline-go-proxy/internal/types"
+	"testing"
+)
 
 func TestParseTokenUsageOpenAIFields(t *testing.T) {
 	usage := parseTokenUsage(map[string]any{
@@ -51,8 +54,8 @@ func TestParseTokenUsageTracksAnthropicCachedTokens(t *testing.T) {
 
 func TestMergeTokenUsagePreservesStreamFields(t *testing.T) {
 	merged := mergeTokenUsage(
-		tokenUsage{Prompt: 100, Cached: 70, Valid: true},
-		tokenUsage{Completion: 20, Total: 120, Valid: true},
+		types.TokenUsage{Prompt: 100, Cached: 70, Valid: true},
+		types.TokenUsage{Completion: 20, Total: 120, Valid: true},
 	)
 	if merged.Prompt != 100 || merged.Completion != 20 || merged.Cached != 70 || merged.Total != 120 {
 		t.Fatalf("unexpected merged usage: %+v", merged)

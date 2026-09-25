@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/types"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -93,11 +95,11 @@ var zenSeedModels = []zenSeedModel{
 	{ID: "big-pickle", Context: 1000000, Output: 32000},
 }
 
-// builtinZenModels 把种子表转成 Model 条目（离线 fallback 用，Source="seed"）。
-func builtinZenModels() []Model {
-	out := make([]Model, 0, len(zenSeedModels))
+// builtinZenModels 把种子表转成 types.Model 条目（离线 fallback 用，Source="seed"）。
+func builtinZenModels() []types.Model {
+	out := make([]types.Model, 0, len(zenSeedModels))
 	for _, m := range zenSeedModels {
-		out = append(out, Model{
+		out = append(out, types.Model{
 			ID:       m.ID,
 			Provider: "opencode",
 			Cost:     "free",
@@ -125,16 +127,16 @@ func remoteZenActive() bool {
 }
 
 // isZenSource 判断模型来源是否属于 opencode 体系（同步条目 "zen" / 内置种子 "seed"）。
-func isZenSource(m Model) bool {
+func isZenSource(m types.Model) bool {
 	return m.Source == "zen" || m.Source == "seed"
 }
 
 // currentZenModels 返回当前生效的 zen 模型（pool 中 zen 来源条目；
 // 从未同步成功时回退到种子表）。
-func currentZenModels() []Model {
+func currentZenModels() []types.Model {
 	p := loadPool()
 	poolMu.Lock()
-	var zen []Model
+	var zen []types.Model
 	for _, m := range p.Models {
 		if isZenSource(m) {
 			zen = append(zen, m)
@@ -149,15 +151,15 @@ func currentZenModels() []Model {
 
 // resolveZenInfo 解析模型名到当前生效的 zen 模型。支持别名与 "opencode/" 前缀。
 // 别名优先于精确 ID 匹配之后、但优先级高于付费同名 ID（种子的 free 别名不会被覆盖）。
-func resolveZenInfo(id string) (Model, bool) {
+func resolveZenInfo(id string) (types.Model, bool) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return Model{}, false
+		return types.Model{}, false
 	}
 	models := currentZenModels()
 
 	// 别名表：seed 模型的别名 → 正式 ID（用种子表数据补全上下文）
-	contextOf := func(m Model) Model { return m }
+	contextOf := func(m types.Model) types.Model { return m }
 	for _, sm := range zenSeedModels {
 		for _, a := range sm.Aliases {
 			if a == id {
@@ -172,13 +174,13 @@ func resolveZenInfo(id string) (Model, bool) {
 		}
 	}
 
-	tryOne := func(name string) (Model, bool) {
+	tryOne := func(name string) (types.Model, bool) {
 		for _, m := range models {
 			if m.ID == name {
 				return m, true
 			}
 		}
-		return Model{}, false
+		return types.Model{}, false
 	}
 	if m, ok := tryOne(id); ok {
 		return m, true
@@ -188,12 +190,12 @@ func resolveZenInfo(id string) (Model, bool) {
 			return m, true
 		}
 	}
-	return Model{}, false
+	return types.Model{}, false
 }
 
 // isZenFreeModel 判定 zen 模型是否免费（用于路由：非免费的 zen 模型直接拒绝）。
 // 种子白名单兜底：官方免费模型即使同步条目漏标 -free 后缀也不会被误拒。
-func isZenFreeModel(m Model) bool {
+func isZenFreeModel(m types.Model) bool {
 	if m.Cost == "free" || strings.HasSuffix(m.ID, "-free") {
 		return true
 	}
@@ -292,7 +294,7 @@ func getZenConfig() *zenConfigData {
 	defer zenConfigMu.Unlock()
 	if zenConfig == nil {
 		cfg := defaultZenConfig()
-		if data, err := os.ReadFile(resolveDataPath(".cline-zen.json")); err == nil {
+		if data, err := os.ReadFile(apphome.ResolveDataPath(".cline-zen.json")); err == nil {
 			if err := json.Unmarshal(data, cfg); err != nil {
 				log.Printf("zen config parse failed: %v", err)
 			}
@@ -334,7 +336,7 @@ func setZenConfig(c *zenConfigData) {
 	zenConfigMu.Unlock()
 
 	data, _ := json.MarshalIndent(c, "", "  ")
-	if err := os.WriteFile(resolveDataPath(".cline-zen.json"), data, 0600); err != nil {
+	if err := os.WriteFile(apphome.ResolveDataPath(".cline-zen.json"), data, 0600); err != nil {
 		log.Printf("zen config save failed: %v", err)
 	}
 	rebuildZenTransport()
@@ -1009,7 +1011,7 @@ type zenCollapseAcc struct {
 	Reasoning    string
 	FinishReason string
 	ToolCalls    []zenCollapseTool
-	Usage        tokenUsage
+	Usage        types.TokenUsage
 }
 
 // readAllLimited 读取响应体，最多 limit 字节（防御异常大的错误页）。
@@ -1098,7 +1100,7 @@ func syncZenModels() modelSyncResult {
 		seedFree[sm.ID] = true
 	}
 	seen := make(map[string]bool)
-	var remote []Model
+	var remote []types.Model
 	for _, item := range payload.Data {
 		id := item.ID
 		if id == "" || seen[id] {
@@ -1109,7 +1111,7 @@ func syncZenModels() modelSyncResult {
 		if strings.HasSuffix(id, "-free") || seedFree[id] {
 			cost = "free"
 		}
-		remote = append(remote, Model{
+		remote = append(remote, types.Model{
 			ID:       id,
 			Provider: "opencode",
 			Cost:     cost,
@@ -1126,13 +1128,13 @@ func syncZenModels() modelSyncResult {
 	// 用户在管理页锁定过的条目（MetaLocked）保留原值；
 	// 其余按种子表刷新（种子值更新时旧条目自动跟进），新模型回退默认。
 	p := loadPool()
-	oldZen := make(map[string]Model, len(p.Models))
+	oldZen := make(map[string]types.Model, len(p.Models))
 	for _, m := range p.Models {
 		if m.Source == "zen" {
 			oldZen[m.ID] = m
 		}
 	}
-	fillMeta := func(m Model) Model {
+	fillMeta := func(m types.Model) types.Model {
 		if om, ok := oldZen[m.ID]; ok && om.MetaLocked && om.Context > 0 {
 			m.Context, m.Output = om.Context, om.Output
 			m.MetaLocked = true
@@ -1158,7 +1160,7 @@ func syncZenModels() modelSyncResult {
 
 	poolMu.Lock()
 	oldIDs := make(map[string]bool)
-	var kept []Model
+	var kept []types.Model
 	for _, m := range p.Models {
 		if m.Source == "zen" {
 			oldIDs[m.ID] = true

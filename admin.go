@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/types"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -331,7 +333,7 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 		req.Email = fmt.Sprintf("user_%d", len(loadPool().Accounts)+1)
 	}
 
-	acc := &Account{
+	acc := &types.Account{
 		AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 		Email:        req.Email,
 		RefreshToken: req.RefreshToken,
@@ -345,7 +347,7 @@ func handleAdminAccountAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	addAccount(acc)
-	log.Printf("Account added via API: %s", req.Email)
+	log.Printf("types.Account added via API: %s", req.Email)
 
 	writeAPI(w, http.StatusOK, apiResponse{
 		Success: true,
@@ -457,7 +459,7 @@ func handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 			email = cline.Data.UserInfo.Email
 		}
 
-		acc := &Account{
+		acc := &types.Account{
 			AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 			Email:        email,
 			RefreshToken: cline.Data.RefreshToken,
@@ -582,7 +584,7 @@ func handleSSOImport(w http.ResponseWriter, r *http.Request) {
 				email = fmt.Sprintf("sso_user_%d", time.Now().UnixMilli())
 			}
 
-			acc := &Account{
+			acc := &types.Account{
 				AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 				Email:        email,
 				RefreshToken: token,
@@ -665,7 +667,7 @@ func handleBatchImport(w http.ResponseWriter, r *http.Request) {
 		if email == "" {
 			email = fmt.Sprintf("batch_%d", time.Now().UnixMilli())
 		}
-		acc := &Account{
+		acc := &types.Account{
 			AccountID:    fmt.Sprintf("acc_%d", time.Now().UnixMilli()),
 			Email:        email,
 			RefreshToken: token,
@@ -763,7 +765,7 @@ func handleAdminDeleteAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	poolMu.Lock()
-	pool = &AccountPool{Accounts: []*Account{}, Keys: []string{}}
+	pool = &types.AccountPool{Accounts: []*types.Account{}, Keys: []string{}}
 	poolMu.Unlock()
 	savePool()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Message: tAPI(r, "accounts_deleted")})
@@ -825,17 +827,17 @@ func handleAdminAccountTest(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(body, &req)
 
 	p := loadPool()
-	var targets []*Account
+	var targets []*types.Account
 	if req.AccountID != "" {
 		acc := getAccountByID(req.AccountID)
 		if acc == nil {
 			writeAPI(w, http.StatusNotFound, apiResponse{Error: tAPI(r, "account_not_found")})
 			return
 		}
-		targets = []*Account{acc}
+		targets = []*types.Account{acc}
 	} else {
 		poolMu.Lock()
-		targets = make([]*Account, len(p.Accounts))
+		targets = make([]*types.Account, len(p.Accounts))
 		copy(targets, p.Accounts)
 		poolMu.Unlock()
 	}
@@ -886,10 +888,10 @@ func defaultProxyConfig() *proxyConfigData {
 const proxyConfigPath = ".cline-config.json"
 
 // loadProxyConfigFromDisk 启动时加载持久化的代理配置（轮询策略/请求头），
-// 文件不存在或损坏时回退默认值。resolveDataPath 为纯函数，包级初始化安全。
+// 文件不存在或损坏时回退默认值。apphome.ResolveDataPath 为纯函数，包级初始化安全。
 func loadProxyConfigFromDisk() *proxyConfigData {
 	cfg := defaultProxyConfig()
-	if data, err := os.ReadFile(resolveDataPath(proxyConfigPath)); err == nil {
+	if data, err := os.ReadFile(apphome.ResolveDataPath(proxyConfigPath)); err == nil {
 		if err := json.Unmarshal(data, cfg); err != nil {
 			log.Printf("proxy config parse failed: %v", err)
 		}
@@ -908,7 +910,7 @@ func saveProxyConfigLocked() {
 	if err != nil {
 		return
 	}
-	if err := os.WriteFile(resolveDataPath(proxyConfigPath), data, 0600); err != nil {
+	if err := os.WriteFile(apphome.ResolveDataPath(proxyConfigPath), data, 0600); err != nil {
 		log.Printf("proxy config save failed: %v", err)
 	}
 }
@@ -1211,7 +1213,7 @@ func handleAdminModelAdd(w http.ResponseWriter, r *http.Request) {
 
 	p := loadPool()
 	poolMu.Lock()
-	p.Models = append(p.Models, Model{
+	p.Models = append(p.Models, types.Model{
 		ID:       req.ID,
 		Provider: provider,
 		Cost:     cost,

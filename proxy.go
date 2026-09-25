@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cline-go-proxy/internal/types"
 	"context"
 	"encoding/json"
 	"errors"
@@ -40,7 +41,7 @@ var freeModelChain = []string{freeModelPrimary, freeModelFallback, freeModelLast
 
 // builtinModels 是内置默认模型列表（不可删除），仅作为离线 / 未同步时的 fallback。
 // 同步 Cline 官方推荐模型成功后，getAllModels 以远程模型为主。
-var builtinModels = []Model{
+var builtinModels = []types.Model{
 	{ID: "z-ai/glm-5.3-flash", Provider: "z-ai", Cost: "free", Status: "active", Custom: false},
 	{ID: "cline-free/longcat-2.0", Provider: "cline-free", Cost: "free", Status: "active", Custom: false},
 	{ID: "cline-pass/glm-5.2", Provider: "zai", Cost: "pass", Status: "active", Custom: false},
@@ -53,14 +54,14 @@ var builtinModels = []Model{
 // getAllModels 返回可用模型列表：
 //   - 已同步远程模型：Cline 远程（Source=remote）+ opencode 同步（Source=zen）+ 用户自定义
 //   - 未同步 / 离线：内置 fallback（Cline + zen 种子表）+ 用户自定义
-func getAllModels() []Model {
+func getAllModels() []types.Model {
 	p := loadPool()
 	poolMu.Lock()
 	defer poolMu.Unlock()
 
-	var custom []Model
-	var remote []Model
-	var zen []Model
+	var custom []types.Model
+	var remote []types.Model
+	var zen []types.Model
 	for _, m := range p.Models {
 		switch m.Source {
 		case "remote":
@@ -73,18 +74,18 @@ func getAllModels() []Model {
 	}
 
 	if len(remote) > 0 || len(zen) > 0 || remoteZenActive() {
-		result := make([]Model, 0, len(remote)+len(zen)+len(custom))
+		result := make([]types.Model, 0, len(remote)+len(zen)+len(custom))
 		result = append(result, remote...)
 		result = append(result, zen...)
 		result = append(result, custom...)
 		return result
 	}
 
-	builtin := make([]Model, 0, len(builtinModels)+len(zenSeedModels))
+	builtin := make([]types.Model, 0, len(builtinModels)+len(zenSeedModels))
 	builtin = append(builtin, builtinModels...)
 	builtin = append(builtin, builtinZenModels()...)
 
-	result := make([]Model, 0, len(builtin)+len(custom))
+	result := make([]types.Model, 0, len(builtin)+len(custom))
 	result = append(result, builtin...)
 	result = append(result, custom...)
 	return result
@@ -229,7 +230,7 @@ type chatRequest struct {
 
 // isFreeModelEntry 判断模型是否免费（/models 过滤用）：
 // Cost 直接标记 free，或 zen 来源且命中免费判定（种子白名单兜底）。
-func isFreeModelEntry(m Model) bool {
+func isFreeModelEntry(m types.Model) bool {
 	if m.Cost == "free" {
 		return true
 	}
@@ -379,7 +380,7 @@ func startProxy(host string, port int) error {
 		model, _ := params["model"].(string)
 		log.Printf("  client: stream=%v tools=%d model=%s", isStream, toolCount, model)
 
-		reqLog := RequestLog{StartedAt: time.Now(), Protocol: "openai", Model: model, Stream: isStream}
+		reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "openai", Model: model, Stream: isStream}
 
 		// Override system prompt from override.md for OpenAI format
 		if override := loadOverrideContent(); override != "" {
@@ -404,7 +405,7 @@ func startProxy(host string, port int) error {
 		switch routeModel(model) {
 		case "reject":
 			msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", model)
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
 			writeJSON(w, http.StatusBadRequest, map[string]any{
 				"error": map[string]string{"message": msg, "type": "invalid_request_error"},
 			})
@@ -437,7 +438,7 @@ func startProxy(host string, port int) error {
 					err = fbErr
 				}
 				log.Printf("  api error: %v", err)
-				finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+				finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 				writeJSON(w, http.StatusBadGateway, map[string]any{
 					"error": map[string]string{"message": err.Error(), "type": "api_error"},
 				})
@@ -472,7 +473,7 @@ func startProxy(host string, port int) error {
 		}
 		if err != nil {
 			log.Printf("  api error: %v", err)
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, clineErrorHTTPStatus(err), map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -805,7 +806,7 @@ func clineErrorHTTPStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-func callClineAPI(params map[string]any, stream bool) (*http.Response, *Account, error) {
+func callClineAPI(params map[string]any, stream bool) (*http.Response, *types.Account, error) {
 	model, _ := params["model"].(string)
 	if model == "free" {
 		resp, acc, err := callFreeClineAPI(params, stream)
@@ -1008,7 +1009,7 @@ func hasActiveAccounts() bool {
 	return false
 }
 
-func callFreeClineAPI(params map[string]any, stream bool) (*http.Response, *Account, error) {
+func callFreeClineAPI(params map[string]any, stream bool) (*http.Response, *types.Account, error) {
 	// "free" 别名的实际顺序：管理员配置的回退链优先，否则动态派生默认链。
 	configured := getProxyConfig().ModelChain
 	chain := configured
@@ -1057,7 +1058,7 @@ func callFreeClineAPI(params map[string]any, stream bool) (*http.Response, *Acco
 	return nil, nil, &freeModelUnavailableError{message: "no eligible accounts available for free models"}
 }
 
-func callClineAPIWithAccount(acc *Account, params map[string]any, stream bool) (*http.Response, *Account, error) {
+func callClineAPIWithAccount(acc *types.Account, params map[string]any, stream bool) (*http.Response, *types.Account, error) {
 	token, err := ensureAccountToken(acc)
 	if err != nil {
 		// Try other accounts
@@ -1186,7 +1187,7 @@ func startCooldownRecovery() {
 		for range ticker.C {
 			p := loadPool()
 			poolMu.Lock()
-			var toRecover []*Account
+			var toRecover []*types.Account
 			for _, acc := range p.Accounts {
 				if acc.Status != "cooldown" {
 					continue
@@ -1215,7 +1216,7 @@ func startCooldownRecovery() {
 // testAccount sends a minimal "hi" request through a specific account to verify
 // it can complete an upstream call. It does not update aggregate token counters
 // or request logs; it is a diagnostic-only probe.
-func testAccount(acc *Account) accountTestResult {
+func testAccount(acc *types.Account) accountTestResult {
 	result := accountTestResult{AccountID: acc.AccountID, Email: acc.Email}
 	started := time.Now()
 
@@ -1273,18 +1274,10 @@ func testAccount(acc *Account) accountTestResult {
 	return result
 }
 
-type tokenUsage struct {
-	Prompt     int64
-	Completion int64
-	Total      int64
-	Cached     int64
-	Valid      bool
-}
-
-func parseTokenUsage(value any) tokenUsage {
+func parseTokenUsage(value any) types.TokenUsage {
 	usage, ok := value.(map[string]any)
 	if !ok {
-		return tokenUsage{}
+		return types.TokenUsage{}
 	}
 	read := func(keys ...string) int64 {
 		for _, key := range keys {
@@ -1345,10 +1338,10 @@ func parseTokenUsage(value any) tokenUsage {
 			}
 		}
 	}
-	return tokenUsage{Prompt: prompt, Completion: completion, Total: total, Cached: cached, Valid: hasUsage}
+	return types.TokenUsage{Prompt: prompt, Completion: completion, Total: total, Cached: cached, Valid: hasUsage}
 }
 
-func mergeTokenUsage(current, next tokenUsage) tokenUsage {
+func mergeTokenUsage(current, next types.TokenUsage) types.TokenUsage {
 	if !next.Valid {
 		return current
 	}
@@ -1371,7 +1364,7 @@ func mergeTokenUsage(current, next tokenUsage) tokenUsage {
 	return current
 }
 
-func recordTokenUsage(acc *Account, model string, usage tokenUsage) {
+func recordTokenUsage(acc *types.Account, model string, usage types.TokenUsage) {
 	if acc == nil || !usage.Valid {
 		return
 	}
@@ -1385,11 +1378,11 @@ func recordTokenUsage(acc *Account, model string, usage tokenUsage) {
 	// 按模型细分统计（仅记录 free 模型）
 	if isFree {
 		if acc.ModelStats == nil {
-			acc.ModelStats = make(map[string]*ModelStat)
+			acc.ModelStats = make(map[string]*types.ModelStat)
 		}
 		st := acc.ModelStats[model]
 		if st == nil {
-			st = &ModelStat{ModelID: model, Cost: "free"}
+			st = &types.ModelStat{ModelID: model, Cost: "free"}
 			acc.ModelStats[model] = st
 		}
 		st.UsageCount++
@@ -1414,7 +1407,7 @@ func isFreeModelID(model string) bool {
 }
 
 // modelCooldownActive 判断某账号下该模型是否处于模型级冷却中。
-func modelCooldownActive(acc *Account, model string) bool {
+func modelCooldownActive(acc *types.Account, model string) bool {
 	if acc == nil || model == "" {
 		return false
 	}
@@ -1434,7 +1427,7 @@ func modelCooldownActive(acc *Account, model string) bool {
 
 // setModelCooldown 记录模型级冷却（429 时调用）：只暂停该模型，账号保持可用。
 // fallback 为解析失败时的恢复时长（默认 1 小时）。
-func setModelCooldown(acc *Account, model string, until time.Time) {
+func setModelCooldown(acc *types.Account, model string, until time.Time) {
 	if acc == nil || model == "" {
 		return
 	}
@@ -1478,7 +1471,7 @@ func getMsgCount(params map[string]any) int {
 	return 0
 }
 
-func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *Account, reqLog *RequestLog) {
+func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *types.Account, reqLog *types.RequestLog) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -1492,7 +1485,7 @@ func handleStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *A
 	}
 
 	reader := bufio.NewReader(upstream.Body)
-	var latestUsage tokenUsage
+	var latestUsage types.TokenUsage
 	var firstOutputAt time.Time
 	for {
 		line, err := reader.ReadString('\n')
@@ -1579,10 +1572,10 @@ func hasFirstOutput(obj map[string]any) bool {
 	return false
 }
 
-func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *Account, reqLog *RequestLog) {
+func handleNonStreamResponse(w http.ResponseWriter, upstream *http.Response, acc *types.Account, reqLog *types.RequestLog) {
 	var raw map[string]any
 	if err := json.NewDecoder(upstream.Body).Decode(&raw); err != nil {
-		finalizeRequestLog(reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+		finalizeRequestLog(reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 		})
@@ -1961,7 +1954,7 @@ func openAIToAnthropic(openAI map[string]any) map[string]any {
 // attempted=false 表示未启用故障转移，调用方维持原错误路径。
 // 注意：失败计数由 callZenAPI 内部标记（每请求恰好一次），此处不再重复计数，
 // 否则限流/服务错误路径 + 此处各计一次，故障转移会被过早触发。
-func zenFailoverToCline(params map[string]any, stream bool) (*http.Response, *Account, error, bool) {
+func zenFailoverToCline(params map[string]any, stream bool) (*http.Response, *types.Account, error, bool) {
 	cfg := getZenConfig()
 	if !cfg.Failover {
 		return nil, nil, nil, false
@@ -2035,13 +2028,13 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("  anthropic: model=%s stream=%v msgs=%d", req.Model, req.Stream, len(req.Messages))
 
-	reqLog := RequestLog{StartedAt: time.Now(), Protocol: "anthropic", Model: req.Model, Stream: req.Stream}
+	reqLog := types.RequestLog{StartedAt: time.Now(), Protocol: "anthropic", Model: req.Model, Stream: req.Stream}
 
 	// 按 model 自动分流（与 chat 端点一致）：zen 免费/付费拒绝/Cline 池
 	switch routeModel(req.Model) {
 	case "reject":
 		msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", req.Model)
-		finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
+		finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, msg)
 		writeJSON(w, http.StatusBadRequest, map[string]any{
 			"error": map[string]string{"message": msg, "type": "invalid_request_error"},
 		})
@@ -2072,7 +2065,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 					} else {
 						var raw map[string]any
 						if err := json.NewDecoder(fbResp.Body).Decode(&raw); err != nil {
-							finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+							finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 							writeJSON(w, http.StatusInternalServerError, map[string]any{
 								"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 							})
@@ -2093,7 +2086,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 				err = fbErr
 			}
 			log.Printf("  anthropic api error: %v", err)
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "api_error"},
 			})
@@ -2105,7 +2098,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 		} else {
 			var raw map[string]any
 			if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-				finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+				finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 				writeJSON(w, http.StatusInternalServerError, map[string]any{
 					"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 				})
@@ -2150,7 +2143,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		log.Printf("  anthropic api error: %v", err)
-		finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
+		finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, err.Error())
 		writeJSON(w, clineErrorHTTPStatus(err), map[string]any{
 			"error": map[string]string{"message": err.Error(), "type": "api_error"},
 		})
@@ -2168,7 +2161,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var raw map[string]any
 		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-			finalizeRequestLog(&reqLog, tokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+			finalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
 			writeJSON(w, http.StatusInternalServerError, map[string]any{
 				"error": map[string]string{"message": err.Error(), "type": "parse_error"},
 			})
@@ -2194,7 +2187,7 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *Account, reqLog *RequestLog) {
+func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *types.Account, reqLog *types.RequestLog) {
 	log.Printf("  anthropic stream: starting real-time forward")
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -2266,7 +2259,7 @@ func handleAnthropicStream(w http.ResponseWriter, upstream *http.Response, acc *
 	}
 
 	reader := bufio.NewReader(upstream.Body)
-	var latestUsage tokenUsage
+	var latestUsage types.TokenUsage
 	var firstOutputAt time.Time
 
 	for {

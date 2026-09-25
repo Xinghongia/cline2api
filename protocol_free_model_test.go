@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"context"
 	"encoding/json"
 	"io"
@@ -96,21 +97,21 @@ func TestOpenAIChatCompletionsFreeFallsBackToDS(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "chat-glm",
 		Email:       "chat-glm@example.com",
 		AccessToken: "chat-glm-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "chat-ds",
 		Email:       "chat-ds@example.com",
 		AccessToken: "chat-ds-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	config := defaultProxyConfig()
 	config.Strategy = "fill"
 	setProxyConfig(config)
@@ -209,21 +210,21 @@ func TestOpenAIResponsesFreeFallsBackToDSAndPreservesResponseFormat(t *testing.T
 		}
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "responses-glm",
 		Email:       "responses-glm@example.com",
 		AccessToken: "responses-glm-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "responses-ds",
 		Email:       "responses-ds@example.com",
 		AccessToken: "responses-ds-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	config := defaultProxyConfig()
 	config.Strategy = "fill"
 	setProxyConfig(config)
@@ -320,21 +321,21 @@ func TestAnthropicMessagesFreeFallsBackToDSAndPreservesResponseFormat(t *testing
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "anthropic-glm",
 		Email:       "anthropic-glm@example.com",
 		AccessToken: "anthropic-glm-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "anthropic-ds",
 		Email:       "anthropic-ds@example.com",
 		AccessToken: "anthropic-ds-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	config := defaultProxyConfig()
 	config.Strategy = "fill"
 	setProxyConfig(config)
@@ -431,21 +432,21 @@ func TestOpenAIChatCompletionsFreeStreamFallsBackBeforeResponseHeaders(t *testin
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "chat-stream-glm",
 		Email:       "chat-stream-glm@example.com",
 		AccessToken: "chat-stream-glm-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "chat-stream-ds",
 		Email:       "chat-stream-ds@example.com",
 		AccessToken: "chat-stream-ds-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	config := defaultProxyConfig()
 	config.Strategy = "fill"
 	setProxyConfig(config)
@@ -523,21 +524,21 @@ func TestOpenAIChatCompletionsFreeStreamDoesNotRetryAfterResponseStarts(t *testi
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "chat-started-glm",
 		Email:       "chat-started-glm@example.com",
 		AccessToken: "chat-started-glm-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "chat-started-second",
 		Email:       "chat-started-second@example.com",
 		AccessToken: "chat-started-second-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	config := defaultProxyConfig()
 	config.Strategy = "fill"
 	setProxyConfig(config)

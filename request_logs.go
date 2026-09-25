@@ -1,6 +1,8 @@
 package main
 
 import (
+	"cline-go-proxy/internal/apphome"
+	"cline-go-proxy/internal/types"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -17,37 +19,14 @@ const (
 	requestLogMaxLimit     = 100
 )
 
-type RequestLog struct {
-	ID           string    `json:"id"`
-	StartedAt    time.Time `json:"startedAt"`
-	FinishedAt   time.Time `json:"finishedAt"`
-	AccountID    string    `json:"accountId"`
-	AccountEmail string    `json:"accountEmail"`
-	Protocol     string    `json:"protocol"`
-	// Upstream 标记上游来源："cline"=Cline 账号池，"opencode"=opencode zen 免费模型
-	Upstream       string  `json:"upstream,omitempty"`
-	Model          string  `json:"model"`
-	Stream         bool    `json:"stream"`
-	InputTokens    int64   `json:"inputTokens"`
-	OutputTokens   int64   `json:"outputTokens"`
-	CachedTokens   int64   `json:"cachedTokens"`
-	TotalTokens    int64   `json:"totalTokens"`
-	UsageAvailable bool    `json:"usageAvailable"`
-	DurationMs     int64   `json:"durationMs"`
-	TTFTMs         int64   `json:"ttftMs"`
-	OutputTPS      float64 `json:"outputTokensPerSecond"`
-	Completed      bool    `json:"completed"`
-	Error          string  `json:"error,omitempty"`
-}
-
 var (
-	requestLogs     []RequestLog
+	requestLogs     []types.RequestLog
 	requestLogsMu   sync.Mutex
 	requestLogsPath string
 )
 
 func init() {
-	requestLogsPath = resolveDataPath(".cline-request-logs.json")
+	requestLogsPath = apphome.ResolveDataPath(".cline-request-logs.json")
 }
 
 func loadRequestLogs() {
@@ -55,7 +34,7 @@ func loadRequestLogs() {
 	if err != nil {
 		return
 	}
-	var entries []RequestLog
+	var entries []types.RequestLog
 	if err := json.Unmarshal(data, &entries); err != nil {
 		return
 	}
@@ -64,7 +43,7 @@ func loadRequestLogs() {
 	requestLogsMu.Unlock()
 }
 
-func pruneRequestLogsLocked(entries []RequestLog) []RequestLog {
+func pruneRequestLogsLocked(entries []types.RequestLog) []types.RequestLog {
 	if len(entries) == 0 {
 		return entries
 	}
@@ -101,7 +80,7 @@ func saveRequestLogsLocked() {
 	_ = os.Rename(tmp, requestLogsPath)
 }
 
-func appendRequestLog(entry RequestLog) {
+func appendRequestLog(entry types.RequestLog) {
 	if entry.ID == "" {
 		entry.ID = fmt.Sprintf("req_%d", entry.StartedAt.UnixNano())
 	}
@@ -113,12 +92,12 @@ func appendRequestLog(entry RequestLog) {
 }
 
 type requestLogPage struct {
-	Items      []RequestLog `json:"items"`
-	NextCursor string       `json:"nextCursor"`
-	HasMore    bool         `json:"hasMore"`
+	Items      []types.RequestLog `json:"items"`
+	NextCursor string             `json:"nextCursor"`
+	HasMore    bool               `json:"hasMore"`
 }
 
-func encodeCursor(entry RequestLog) string {
+func encodeCursor(entry types.RequestLog) string {
 	key := fmt.Sprintf("%d|%s", entry.StartedAt.UnixNano(), entry.ID)
 	return base64.RawURLEncoding.EncodeToString([]byte(key))
 }
@@ -158,8 +137,8 @@ func listRequestLogs(limit int, cursor string) (requestLogPage, error) {
 	requestLogsMu.Lock()
 	defer requestLogsMu.Unlock()
 
-	result := make([]RequestLog, 0, limit)
-	var lastEntry RequestLog
+	result := make([]types.RequestLog, 0, limit)
+	var lastEntry types.RequestLog
 	for _, e := range requestLogs {
 		if cursor != "" {
 			if e.StartedAt.After(afterTime) {
@@ -184,7 +163,7 @@ func listRequestLogs(limit int, cursor string) (requestLogPage, error) {
 	return page, nil
 }
 
-func finalizeRequestLog(entry *RequestLog, usage tokenUsage, firstOutputAt time.Time, startedAt time.Time, completed bool, errMsg string) {
+func finalizeRequestLog(entry *types.RequestLog, usage types.TokenUsage, firstOutputAt time.Time, startedAt time.Time, completed bool, errMsg string) {
 	entry.FinishedAt = time.Now()
 	entry.DurationMs = entry.FinishedAt.Sub(startedAt).Milliseconds()
 	entry.Completed = completed

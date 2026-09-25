@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/apphome"
 	"context"
 	"encoding/json"
 	"log"
@@ -46,7 +47,7 @@ func getClineProxyConfig() *clineProxyConfigData {
 	defer clineProxyCfgMu.Unlock()
 	if clineProxyCfg == nil {
 		cfg := defaultClineProxyConfig()
-		if data, err := os.ReadFile(resolveDataPath(".cline-proxy.json")); err == nil {
+		if data, err := os.ReadFile(apphome.ResolveDataPath(".cline-proxy.json")); err == nil {
 			if err := json.Unmarshal(data, cfg); err != nil {
 				log.Printf("cline proxy config parse failed: %v", err)
 			}
@@ -83,7 +84,7 @@ func setClineProxyConfig(c *clineProxyConfigData) {
 	clineProxyCfgMu.Unlock()
 
 	data, _ := json.MarshalIndent(c, "", "  ")
-	if err := os.WriteFile(resolveDataPath(".cline-proxy.json"), data, 0600); err != nil {
+	if err := os.WriteFile(apphome.ResolveDataPath(".cline-proxy.json"), data, 0600); err != nil {
 		log.Printf("cline proxy config save failed: %v", err)
 		setClineProxyPersistErr(err)
 		return

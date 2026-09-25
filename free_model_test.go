@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,7 +26,7 @@ func TestCallClineAPIRefreshRetryReplaysRequestBody(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	account := &Account{
+	account := &types.Account{
 		AccountID:    "refresh-account",
 		Email:        "refresh@example.com",
 		RefreshToken: "refresh-token",
@@ -112,21 +113,21 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTokenRefreshFailure(t *testin
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:    "refresh-failed",
 		Email:        "refresh-failed@example.com",
 		RefreshToken: "refresh-one",
 		ExpiresAt:    time.Now().Add(-time.Hour).UnixMilli(),
 		Status:       "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "glm-two",
 		Email:       "two@example.com",
 		AccessToken: "token-two",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	setProxyConfig(defaultProxyConfig())
 
 	var paths []string
@@ -202,21 +203,21 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterTransportFailure(t *testing.T
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "transport-failed",
 		Email:       "transport-failed@example.com",
 		AccessToken: "token-one",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "glm-two",
 		Email:       "two@example.com",
 		AccessToken: "token-two",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	setProxyConfig(defaultProxyConfig())
 
 	var attempts []string
@@ -278,21 +279,21 @@ func TestCallClineAPIFreeRetriesNextGLMAccountAfterQuota429(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "glm-one",
 		Email:       "one@example.com",
 		AccessToken: "token-one",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "glm-two",
 		Email:       "two@example.com",
 		AccessToken: "token-two",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	setProxyConfig(defaultProxyConfig())
 
 	var attempts []string
@@ -365,21 +366,21 @@ func TestCallClineAPIFreeFallsBackToDSAfterAllGLMAccountsUnavailable(t *testing.
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "glm-one",
 		Email:       "one@example.com",
 		AccessToken: "token-one",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "glm-two",
 		Email:       "two@example.com",
 		AccessToken: "token-two",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	setProxyConfig(defaultProxyConfig())
 
 	var attempts []string
@@ -450,7 +451,7 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "ds-one",
 		Email:       "one@example.com",
 		AccessToken: "token-one",
@@ -460,7 +461,7 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 			freeModelPrimary: time.Now().Add(time.Hour),
 		},
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "ds-two",
 		Email:       "two@example.com",
 		AccessToken: "token-two",
@@ -470,7 +471,7 @@ func TestCallClineAPIFreeRetriesNextDSAccountAfterQuota429(t *testing.T) {
 			freeModelPrimary: time.Now().Add(time.Hour),
 		},
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	setProxyConfig(defaultProxyConfig())
 
 	var attempts []string
@@ -547,7 +548,7 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	account := &Account{
+	account := &types.Account{
 		AccountID:   "recovery-account",
 		Email:       "recovery@example.com",
 		AccessToken: "recovery-token",
@@ -557,7 +558,7 @@ func TestCallClineAPIFreeReturnsToGLMAfterCooldownExpires(t *testing.T) {
 			freeModelPrimary: time.Now().Add(time.Hour),
 		},
 	}
-	pool = &AccountPool{Accounts: []*Account{account}}
+	pool = &types.AccountPool{Accounts: []*types.Account{account}}
 	setProxyConfig(defaultProxyConfig())
 
 	var models []string
@@ -619,7 +620,7 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 		{name: "DS cooldown allows GLM", cooldownModel: freeModelFallback, wantModel: freeModelPrimary},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			account := &Account{
+			account := &types.Account{
 				AccountID:   "independent-account",
 				Email:       "independent@example.com",
 				AccessToken: "independent-token",
@@ -629,7 +630,7 @@ func TestCallClineAPIFreeKeepsModelCooldownsIndependent(t *testing.T) {
 					test.cooldownModel: time.Now().Add(time.Hour),
 				},
 			}
-			pool = &AccountPool{Accounts: []*Account{account}}
+			pool = &types.AccountPool{Accounts: []*types.Account{account}}
 			setProxyConfig(defaultProxyConfig())
 
 			var upstreamModel string
@@ -679,7 +680,7 @@ func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	account := &Account{
+	account := &types.Account{
 		AccountID:      "glm-cooling",
 		Email:          "cooling@example.com",
 		AccessToken:    "token-cooling",
@@ -690,7 +691,7 @@ func TestCallClineAPIFreeDoesNotPickCoolingAccount(t *testing.T) {
 	for _, model := range freeModelChain {
 		account.ModelCooldowns[model] = time.Now().Add(time.Hour)
 	}
-	pool = &AccountPool{Accounts: []*Account{account}}
+	pool = &types.AccountPool{Accounts: []*types.Account{account}}
 	setProxyConfig(defaultProxyConfig())
 
 	calls := 0
@@ -721,9 +722,9 @@ func TestPickAccountForModelStrictPreservesStrategy(t *testing.T) {
 		setProxyConfig(oldConfig)
 	})
 
-	first := &Account{AccountID: "first", Status: "active"}
-	second := &Account{AccountID: "second", Status: "active"}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	first := &types.Account{AccountID: "first", Status: "active"}
+	second := &types.Account{AccountID: "second", Status: "active"}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 
 	for _, strategy := range []string{"fill", "round_robin", "random"} {
 		t.Run(strategy, func(t *testing.T) {
@@ -762,14 +763,14 @@ func TestCallClineAPIDirectModelsFallBackOnModelCooldown(t *testing.T) {
 
 	for _, model := range []string{"z-ai/glm-5.3-flash", "deepseek/deepseek-v4-flash"} {
 		t.Run(model, func(t *testing.T) {
-			account := &Account{
+			account := &types.Account{
 				AccountID:   "direct-account",
 				Email:       "direct@example.com",
 				AccessToken: "direct-token",
 				ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 				Status:      "active",
 			}
-			pool = &AccountPool{Accounts: []*Account{account}}
+			pool = &types.AccountPool{Accounts: []*types.Account{account}}
 			setProxyConfig(defaultProxyConfig())
 
 			var attempted []string
@@ -838,14 +839,14 @@ func TestCallClineAPIDirectModelsNoFallbackOnServerError(t *testing.T) {
 	})
 
 	model := "z-ai/glm-5.3-flash"
-	account := &Account{
+	account := &types.Account{
 		AccountID:   "direct-account",
 		Email:       "direct@example.com",
 		AccessToken: "direct-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{account}}
+	pool = &types.AccountPool{Accounts: []*types.Account{account}}
 	setProxyConfig(defaultProxyConfig())
 
 	calls := 0
@@ -898,14 +899,14 @@ func TestHandleResponsesFreeReturnsTooManyRequestsWhenBothPoolsUnavailable(t *te
 		requestLogsMu.Unlock()
 	})
 
-	account := &Account{
+	account := &types.Account{
 		AccountID:   "quota-account",
 		Email:       "quota@example.com",
 		AccessToken: "quota-token",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{account}}
+	pool = &types.AccountPool{Accounts: []*types.Account{account}}
 	setProxyConfig(defaultProxyConfig())
 
 	calls := 0
@@ -944,27 +945,27 @@ func TestPickAccountForModelLeastUsedSpreadsUsage(t *testing.T) {
 	oldPool := pool
 	t.Cleanup(func() { pool = oldPool })
 
-	heavy := &Account{
+	heavy := &types.Account{
 		AccountID:   "heavy",
 		Email:       "heavy@example.com",
 		AccessToken: "token-heavy",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
-		ModelStats: map[string]*ModelStat{
+		ModelStats: map[string]*types.ModelStat{
 			freeModelPrimary: {ModelID: freeModelPrimary, UsageCount: 100},
 		},
 	}
-	light := &Account{
+	light := &types.Account{
 		AccountID:   "light",
 		Email:       "light@example.com",
 		AccessToken: "token-light",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
-		ModelStats: map[string]*ModelStat{
+		ModelStats: map[string]*types.ModelStat{
 			freeModelPrimary: {ModelID: freeModelPrimary, UsageCount: 2},
 		},
 	}
-	pool = &AccountPool{Accounts: []*Account{heavy, light}}
+	pool = &types.AccountPool{Accounts: []*types.Account{heavy, light}}
 
 	for i := 0; i < 5; i++ {
 		acc := pickAccountForModelLeastUsed(freeModelPrimary)
@@ -979,17 +980,17 @@ func TestPickAccountForModelLeastUsedSpreadsUsage(t *testing.T) {
 
 func TestIsFreeModelEntry(t *testing.T) {
 	cases := []struct {
-		m    Model
+		m    types.Model
 		want bool
 	}{
-		{Model{ID: "z-ai/glm-5.3-flash", Cost: "free"}, true},
-		{Model{ID: "cline-pass/glm-5.2", Cost: "pass"}, false},
+		{types.Model{ID: "z-ai/glm-5.3-flash", Cost: "free"}, true},
+		{types.Model{ID: "cline-pass/glm-5.2", Cost: "pass"}, false},
 		// zen 来源：Cost 漏标但命中种子白名单 → 免费
-		{Model{ID: "mimo-v2.6-flash-free", Cost: "pass", Source: "zen"}, true},
+		{types.Model{ID: "mimo-v2.6-flash-free", Cost: "pass", Source: "zen"}, true},
 		// zen 付费模型 → 拒绝
-		{Model{ID: "claude-opus-5", Cost: "pass", Source: "zen"}, false},
+		{types.Model{ID: "claude-opus-5", Cost: "pass", Source: "zen"}, false},
 		// 非 zen 来源的 pass 模型 → 不免费
-		{Model{ID: "some-model", Cost: "pass", Source: "remote"}, false},
+		{types.Model{ID: "some-model", Cost: "pass", Source: "remote"}, false},
 	}
 	for _, c := range cases {
 		if got := isFreeModelEntry(c.m); got != c.want {
@@ -1008,24 +1009,24 @@ func TestCallClineAPIFreePicksLeastUsedAccount(t *testing.T) {
 		httpClient.Transport = oldTransport
 	})
 
-	first := &Account{
+	first := &types.Account{
 		AccountID:   "acc-first",
 		Email:       "first@example.com",
 		AccessToken: "token-first",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
-		ModelStats: map[string]*ModelStat{
+		ModelStats: map[string]*types.ModelStat{
 			freeModelPrimary: {ModelID: freeModelPrimary, UsageCount: 50},
 		},
 	}
-	second := &Account{
+	second := &types.Account{
 		AccountID:   "acc-second",
 		Email:       "second@example.com",
 		AccessToken: "token-second",
 		ExpiresAt:   time.Now().Add(time.Hour).UnixMilli(),
 		Status:      "active",
 	}
-	pool = &AccountPool{Accounts: []*Account{first, second}}
+	pool = &types.AccountPool{Accounts: []*types.Account{first, second}}
 	setProxyConfig(defaultProxyConfig())
 
 	var chosen []string
@@ -1056,18 +1057,18 @@ func TestSortModelsByAvailabilityPrefersAvailableThenLeastUsed(t *testing.T) {
 	oldPool := pool
 	t.Cleanup(func() { pool = oldPool })
 
-	acc := &Account{
+	acc := &types.Account{
 		AccountID:      "acc-one",
 		Email:          "one@example.com",
 		AccessToken:    "token",
 		ExpiresAt:      time.Now().Add(time.Hour).UnixMilli(),
 		Status:         "active",
-		ModelCooldowns: map[string]time.Time{}, ModelStats: map[string]*ModelStat{
+		ModelCooldowns: map[string]time.Time{}, ModelStats: map[string]*types.ModelStat{
 			freeModelPrimary:  {ModelID: freeModelPrimary, UsageCount: 90},
 			freeModelFallback: {ModelID: freeModelFallback, UsageCount: 3},
 		},
 	}
-	pool = &AccountPool{Accounts: []*Account{acc}}
+	pool = &types.AccountPool{Accounts: []*types.Account{acc}}
 
 	chain := []string{freeModelPrimary, freeModelFallback}
 	got := sortModelsByAvailability(chain)

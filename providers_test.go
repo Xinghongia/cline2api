@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -21,7 +22,7 @@ func TestCustomProviderServesModel(t *testing.T) {
 		_ = deleteProvider("prov_test1")
 	})
 
-	pool = &AccountPool{Accounts: []*Account{{
+	pool = &types.AccountPool{Accounts: []*types.Account{{
 		AccountID: "a", Email: "a@x.com", AccessToken: "t",
 		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(), Status: "active",
 	}}}
@@ -92,7 +93,7 @@ func TestCustomProviderFailureFallsBackToChain(t *testing.T) {
 		_ = deleteProvider("prov_test2")
 	})
 
-	pool = &AccountPool{Accounts: []*Account{{
+	pool = &types.AccountPool{Accounts: []*types.Account{{
 		AccountID: "a", Email: "a@x.com", AccessToken: "t",
 		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(), Status: "active",
 	}}}

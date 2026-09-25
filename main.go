@@ -40,8 +40,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("Login failed: %v", err)
 		}
-		fmt.Printf("Account added to pool successfully!\n")
-		fmt.Printf("  Account ID: %s\n", acc.AccountID)
+		fmt.Printf("types.Account added to pool successfully!\n")
+		fmt.Printf("  types.Account ID: %s\n", acc.AccountID)
 		fmt.Printf("  Email:      %s\n", acc.Email)
 		fmt.Printf("  Status:     %s\n", acc.Status)
 		fmt.Println("\nRun without flags to start the proxy with account rotation.")
@@ -54,7 +54,7 @@ func main() {
 			fmt.Println("No accounts in pool. Use --add-account to add one.")
 			return
 		}
-		fmt.Printf("\n=== Account Pool (%d accounts) ===\n\n", len(accounts))
+		fmt.Printf("\n=== types.Account Pool (%d accounts) ===\n\n", len(accounts))
 		for i, a := range accounts {
 			fmt.Printf("  %d. [%s] %s (status: %s, used: %d)\n",
 				i+1, a.AccountID, a.Email, a.Status, a.UsageCount)

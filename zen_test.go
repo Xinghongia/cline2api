@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cline-go-proxy/internal/types"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -75,7 +76,7 @@ func resetZenTestState(t *testing.T) {
 // ============ routeModel / resolveZenInfo 测试 ============
 
 // currentZenModels / resolveZenInfo 把 "zen" 与 "seed" 都视为 zen 来源
-func withZenPool(t *testing.T, models []Model) {
+func withZenPool(t *testing.T, models []types.Model) {
 	t.Helper()
 	resetZenTestState(t)
 	p := loadPool()
@@ -90,7 +91,7 @@ func withZenPool(t *testing.T, models []Model) {
 }
 
 func TestRouteModelZenFree(t *testing.T) {
-	withZenPool(t, append([]Model{}, builtinZenModels()...))
+	withZenPool(t, append([]types.Model{}, builtinZenModels()...))
 	// 未同步过 → 种子表生效
 	if got := routeModel("deepseek-v4-flash-free"); got != "zen" {
 		t.Errorf("routeModel(free seed model) = %q, want zen", got)
@@ -111,7 +112,7 @@ func TestRouteModelZenFree(t *testing.T) {
 }
 
 func TestRouteModelRejectPaid(t *testing.T) {
-	withZenPool(t, []Model{
+	withZenPool(t, []types.Model{
 		{ID: "gpt-5-turbo", Provider: "opencode", Cost: "pass", Status: "active", Source: "zen"},
 	})
 	if got := routeModel("gpt-5-turbo"); got != "reject" {
@@ -123,7 +124,7 @@ func TestRouteModelRejectPaid(t *testing.T) {
 }
 
 func TestRouteModelClinePassthrough(t *testing.T) {
-	withZenPool(t, append([]Model{}, builtinZenModels()...))
+	withZenPool(t, append([]types.Model{}, builtinZenModels()...))
 	if got := routeModel("cline-free/glm-5.2"); got != "cline" {
 		t.Errorf("routeModel(cline model) = %q, want cline", got)
 	}
@@ -141,7 +142,7 @@ func TestDelistedSeedModelGoesDormant(t *testing.T) {
 	t.Cleanup(func() { restoreRemoteZen(oldEnabled) })
 
 	// 池中只有官方还存在的模型，longcat-2.0-free 已被下架（不在池里）
-	withZenPool(t, []Model{
+	withZenPool(t, []types.Model{
 		{ID: "deepseek-v4-flash-free", Provider: "opencode", Cost: "free", Source: "zen", Context: 200000},
 	})
 	if _, ok := resolveZenInfo("longcat-2.0-free"); ok {
@@ -164,9 +165,9 @@ func restoreRemoteZen(v bool) {
 
 func TestAliasNotShadowedBySyncedPaidModel(t *testing.T) {
 	restoreRemoteZen(false)
-	withZenPool(t, append([]Model{}, builtinZenModels()...))
+	withZenPool(t, append([]types.Model{}, builtinZenModels()...))
 	// 同步来一个付费模型 ID 恰好等于 free 别名（参考项目的隐患场景）
-	withZenPool(t, append(builtinZenModels(), Model{
+	withZenPool(t, append(builtinZenModels(), types.Model{
 		ID: "deepseek-v4-flash", Provider: "opencode", Cost: "pass", Source: "zen",
 	}))
 	// 别名 deepseek-v4-flash 应解析到免费正式 ID 而非付费条目
@@ -457,7 +458,7 @@ func TestUnwrapDataEnvelope(t *testing.T) {
 }
 
 func TestUsageToResponses(t *testing.T) {
-	u := usageToResponses(tokenUsage{Prompt: 10, Completion: 5, Cached: 2})
+	u := usageToResponses(types.TokenUsage{Prompt: 10, Completion: 5, Cached: 2})
 	if u["input_tokens"] != int64(10) || u["output_tokens"] != int64(5) || u["total_tokens"] != int64(15) {
 		t.Errorf("aggregate usage: %v", u)
 	}
@@ -555,9 +556,9 @@ func TestAnthropicThinkingMapping(t *testing.T) {
 	}
 	for _, c := range cases {
 		req := anthropicReq{
-			Model:     "m1",
-			MaxTokens: 100,
-			Messages:  []anthropicMsg{{Role: "user", Content: "hi"}},
+			Model: "m1",
+			MaxTokens:   100,
+			Messages:    []anthropicMsg{{Role: "user", Content: "hi"}},
 		}
 		if c.thinking != "" {
 			req.Thinking = json.RawMessage(c.thinking)
