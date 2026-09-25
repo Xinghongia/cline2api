@@ -82,7 +82,7 @@ func getAllModels() []types.Model {
 		result = append(result, remote...)
 		result = append(result, zenList...)
 		result = append(result, custom...)
-		return result
+		return withProviderModels(result)
 	}
 
 	builtin := make([]types.Model, 0, len(builtinModels)+len(zen.ZenSeedModels))
@@ -92,7 +92,7 @@ func getAllModels() []types.Model {
 	result := make([]types.Model, 0, len(builtin)+len(custom))
 	result = append(result, builtin...)
 	result = append(result, custom...)
-	return result
+	return withProviderModels(result)
 }
 
 // getDefaultModel 返回用户设置的默认模型；未设置时优先回退到第一个远程 free 模型，
@@ -417,6 +417,19 @@ func StartProxy(host string, port int) error {
 		}
 
 		// 按 model 自动分流：zen 免费模型 / zen 付费拒绝 / 其余走 Cline 池
+		// provider 直连优先（中转站核心路径），失败降级到 zen/cline 常规路由
+		if resp, handled, perr := tryProvider(params, isStream, &reqLog); handled {
+			if perr == nil {
+				defer resp.Body.Close()
+				if isStream {
+					handleStreamResponse(w, resp, nil, &reqLog)
+				} else {
+					handleNonStreamResponse(w, resp, nil, &reqLog)
+				}
+				return
+			}
+		}
+
 		switch zen.RouteModel(model) {
 		case "reject":
 			msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", model)
@@ -1840,6 +1853,34 @@ func handleAnthropicMessages(w http.ResponseWriter, r *http.Request) {
 	reqLog.APIKeyID = apiKeyIDFromContext(r.Context())
 
 	// 按 model 自动分流（与 chat 端点一致）：zen 免费/付费拒绝/Cline 池
+	// provider 直连优先（中转站核心路径），失败降级到 zen/cline 常规路由
+	if resp, handled, perr := tryProvider(openAIReq, req.Stream, &reqLog); handled {
+		if perr == nil {
+			defer resp.Body.Close()
+			if req.Stream {
+				handleAnthropicStream(w, resp, nil, &reqLog)
+			} else {
+				var raw map[string]any
+				if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+					reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+					writeJSON(w, http.StatusInternalServerError, map[string]any{
+						"error": map[string]string{"message": err.Error(), "type": "parse_error"},
+					})
+					return
+				}
+				out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
+				usage := types.ParseTokenUsage(out2["usage"])
+				reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+				anthropicResp := openAIToAnthropic(out2)
+				if chatmsg.HasToolUseBlocks(anthropicResp["content"]) {
+					anthropicResp["stop_reason"] = "tool_use"
+				}
+				writeJSON(w, http.StatusOK, anthropicResp)
+			}
+			return
+		}
+	}
+
 	switch zen.RouteModel(req.Model) {
 	case "reject":
 		msg := fmt.Sprintf("model %q is a paid opencode model; only free models are proxied", req.Model)
@@ -2424,17 +2465,33 @@ func callProvider(p *providers.CustomProvider, params map[string]any, stream boo
 		body["max_completion_tokens"] = chatmsg.DefaultMaxTokens
 	}
 
+	// 模型映射：暴露 ID → 上游真实 ID（两种协议统一在此应用）
+	if m, ok := body["model"].(string); ok {
+		body["model"] = p.UpstreamModelFor(m)
+	}
+
+	isAnthropic := p.EffectiveProtocol() == providers.ProtocolAnthropic
+	endpoint := strings.TrimRight(p.BaseURL, "/") + "/chat/completions"
+	if isAnthropic {
+		body = openAIParamsToAnthropicBody(body)
+		endpoint = strings.TrimRight(p.BaseURL, "/") + "/v1/messages"
+	}
+
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshal provider body: %w", err)
 	}
 
-	endpoint := strings.TrimRight(p.BaseURL, "/") + "/chat/completions"
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(bodyJSON))
 	if err != nil {
 		return nil, fmt.Errorf("create provider request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	if isAnthropic {
+		req.Header.Set("x-api-key", p.APIKey)
+		req.Header.Set("anthropic-version", "2023-06-01")
+	} else {
+		req.Header.Set("Authorization", "Bearer "+p.APIKey)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range p.Headers {
 		if v == "" {
@@ -2451,12 +2508,32 @@ func callProvider(p *providers.CustomProvider, params map[string]any, stream boo
 	// 复用全局 transport（测试/代理定制经由 httpx.Client.Transport 生效）
 	client := &http.Client{Transport: httpx.Client.Transport, Timeout: timeout}
 
-	log.Printf("  provider upstream: name=%s model=%v stream=%v msgs=%d", p.Name, params["model"], stream, chatmsg.MsgCount(params))
+	log.Printf("  provider upstream: name=%s proto=%s model=%v stream=%v msgs=%d", p.Name, p.EffectiveProtocol(), params["model"], stream, chatmsg.MsgCount(params))
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("provider request: %w", err)
 	}
 	if resp.StatusCode == http.StatusOK {
+		if isAnthropic {
+			// Anthropic 上游统一转写为 OpenAI 形态，下游处理逻辑零感知
+			if stream {
+				resp.Body = anthropicStreamToOpenAIStream(resp.Body)
+			} else {
+				raw, rerr := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if rerr != nil {
+					return nil, fmt.Errorf("read anthropic response: %w", rerr)
+				}
+				var am map[string]any
+				if err := json.Unmarshal(raw, &am); err != nil {
+					return nil, fmt.Errorf("decode anthropic response: %w", err)
+				}
+				out, _ := json.Marshal(anthropicMessageToOpenAI(am))
+				resp.Body = io.NopCloser(bytes.NewReader(out))
+				resp.ContentLength = int64(len(out))
+				resp.Header.Set("Content-Type", "application/json")
+			}
+		}
 		return resp, nil
 	}
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
@@ -2550,4 +2627,57 @@ type apiKeyCtxKey struct{}
 func apiKeyIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(apiKeyCtxKey{}).(string)
 	return v
+}
+
+// tryProvider 中转站核心路径：模型命中启用的自定义 provider 时直连调用。
+// 无论上游是 openai 还是 anthropic 协议，返回的 resp 都已归一为 OpenAI 形态。
+// handled=true 表示模型归 provider 管；此时若 err != nil，调用方可降级到 zen/cline 常规路由。
+func tryProvider(params map[string]any, stream bool, rl *types.RequestLog) (*http.Response, bool, error) {
+	model, _ := params["model"].(string)
+	if model == "" || model == "free" {
+		return nil, false, nil
+	}
+	p := providers.ResolveProviderForModel(model)
+	if p == nil {
+		return nil, false, nil
+	}
+	if rl != nil {
+		rl.ProviderID = p.ID
+		rl.Upstream = "provider"
+	}
+	resp, err := callProvider(p, withModel(params, model), stream)
+	if err != nil {
+		log.Printf("  provider direct attempt failed for %q: %v", model, err)
+		return nil, true, err
+	}
+	log.Printf("  provider direct: %q served by %s (%s)", model, p.Name, p.EffectiveProtocol())
+	return resp, true, nil
+}
+
+// withProviderModels 把启用的自定义 provider 暴露的模型并入模型列表（按 ID 去重）。
+// provider 命中的模型在路由时优先直连，见 tryProvider。
+func withProviderModels(result []types.Model) []types.Model {
+	seen := map[string]bool{}
+	for _, m := range result {
+		seen[m.ID] = true
+	}
+	for _, pr := range providers.ListProviders() {
+		if !pr.Enabled {
+			continue
+		}
+		for _, mid := range pr.ModelIDs {
+			if mid == "" || seen[mid] {
+				continue
+			}
+			seen[mid] = true
+			cost := "pass"
+			if pr.Free {
+				cost = "free"
+			}
+			result = append(result, types.Model{
+				ID: mid, Provider: pr.Name, Cost: cost, Status: "active", Source: "provider",
+			})
+		}
+	}
+	return result
 }

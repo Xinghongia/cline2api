@@ -161,7 +161,9 @@ export interface CustomProvider {
   name: string
   baseURL: string
   apiKey: string
+  protocol?: string
   modelIds: string[]
+  modelMapping?: Record<string, string>
   headers?: Record<string, string>
   enabled: boolean
   priority: number
@@ -173,6 +175,7 @@ export interface CustomProvider {
 export interface ProviderPreset {
   key: string
   name: string
+  protocol?: string
   baseURL: string
   headers?: Record<string, string>
   notes?: string

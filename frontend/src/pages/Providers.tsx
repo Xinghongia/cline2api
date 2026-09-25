@@ -26,7 +26,9 @@ const EMPTY: CustomProvider = {
   name: '',
   baseURL: '',
   apiKey: '',
+  protocol: 'openai',
   modelIds: [],
+  modelMapping: {},
   headers: {},
   enabled: true,
   priority: 100,
@@ -46,6 +48,17 @@ function ProviderEditor(props: {
   const [testing, setTesting] = useState(false)
   const formValue = Form.useWatch([], form)
 
+  // 把映射编辑行合并为 modelMapping 对象
+  const buildPayload = (): CustomProvider => {
+    const v = form.getFieldsValue() as CustomProvider & { modelMappingPairs?: { from: string; to: string }[] }
+    const mapping: Record<string, string> = {}
+    for (const pair of v.modelMappingPairs ?? []) {
+      if (pair?.from && pair?.to) mapping[pair.from] = pair.to
+    }
+    const { modelMappingPairs: _pairs, ...rest } = v
+    return { ...rest, modelMapping: mapping }
+  }
+
   const save = useMutation({
     mutationFn: (values: CustomProvider) => api.post<{ provider: CustomProvider }>('/providers/save', values),
     onSuccess: () => {
@@ -57,7 +70,7 @@ function ProviderEditor(props: {
   })
 
   const test = async () => {
-    const values = form.getFieldsValue() as CustomProvider
+    const values = buildPayload()
     if (!values.baseURL || !values.modelIds?.length) {
       void message.warning(t('providers.testNeedFields', '测试需要 baseURL 和至少一个模型'))
       return
@@ -95,7 +108,7 @@ function ProviderEditor(props: {
       title={props.initial.id ? t('providers.edit', '编辑提供商') : t('providers.add', '添加提供商')}
       open={props.open}
       onCancel={props.onClose}
-      onOk={() => save.mutate(form.getFieldsValue())}
+      onOk={() => save.mutate(buildPayload())}
       confirmLoading={save.isPending}
       width={640}
       footer={
@@ -104,7 +117,7 @@ function ProviderEditor(props: {
           <Button loading={testing} onClick={() => void test()}>
             {t('providers.test', '测试连通性')}
           </Button>
-          <Button type="primary" loading={save.isPending} onClick={() => save.mutate(form.getFieldsValue())}>
+          <Button type="primary" loading={save.isPending} onClick={() => save.mutate(buildPayload())}>
             {t('common.save', '保存')}
           </Button>
         </Space>
@@ -133,6 +146,7 @@ function ProviderEditor(props: {
                   form.setFieldsValue({
                     name: p.name,
                     baseURL: p.baseURL,
+                    protocol: p.protocol || 'openai',
                     headers: p.headers ?? {},
                   })
                   if (p.notes) void message.info(p.notes)
@@ -159,6 +173,18 @@ function ProviderEditor(props: {
           <Input.Password placeholder="sk-..." autoComplete="new-password" />
         </Form.Item>
         <Form.Item
+          name="protocol"
+          label={t('providers.protocol', '上游协议')}
+          extra={t('providers.protocolHint', 'anthropic 协议自动完成请求/响应/SSE 双向转换')}
+        >
+          <Select
+            options={[
+              { value: 'openai', label: 'OpenAI 兼容 (/chat/completions)' },
+              { value: 'anthropic', label: 'Anthropic (/v1/messages)' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item
           name="modelIds"
           label={t('providers.modelIds', '模型 ID 列表')}
           extra={t('providers.modelIdsHint', '回车确认添加；这些模型将出现在 /v1/models 并可被路由')}
@@ -166,6 +192,30 @@ function ProviderEditor(props: {
         >
           <Select mode="tags" open={false} tokenSeparators={[',']} placeholder="gpt-4o, deepseek-chat" />
         </Form.Item>
+        <Form.List name="modelMappingPairs">
+          {(fields, { add, remove }) => (
+            <>
+              <p style={{ marginBottom: 4 }}>{t('providers.mapping', '模型映射（可选）')}</p>
+              {fields.map((field) => (
+                <Space key={field.key} style={{ display: 'flex' }} align="baseline">
+                  <Form.Item name={[field.name, 'from']} noStyle>
+                    <Input placeholder={t('providers.mappingFrom', '对外 ID')} style={{ width: 180 }} />
+                  </Form.Item>
+                  <span>→</span>
+                  <Form.Item name={[field.name, 'to']} noStyle>
+                    <Input placeholder={t('providers.mappingTo', '上游真实 ID')} style={{ width: 220 }} />
+                  </Form.Item>
+                  <Button type="text" danger onClick={() => remove(field.name)}>
+                    ✕
+                  </Button>
+                </Space>
+              ))}
+              <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => add()}>
+                {t('providers.addMapping', '添加映射')}
+              </Button>
+            </>
+          )}
+        </Form.List>
         <Space size="large">
           <Form.Item name="priority" label={t('providers.priority', '优先级（小者优先）')}>
             <InputNumber min={1} max={9999} />
@@ -259,6 +309,9 @@ export default function Providers() {
       render: (v: string, row: CustomProvider) => (
         <Space size={6}>
           <span>{v}</span>
+          <Tag color={row.protocol === 'anthropic' ? 'purple' : 'blue'}>
+            {row.protocol === 'anthropic' ? 'anthropic' : 'openai'}
+          </Tag>
           {row.free ? <Tag color="green">{t('models.free', '免费')}</Tag> : null}
         </Space>
       ),

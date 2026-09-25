@@ -494,6 +494,35 @@ func handleResponses(w http.ResponseWriter, r *http.Request) {
 	chatModel, _ := chat["model"].(string)
 	route := zen.RouteModel(chatModel)
 
+	// provider 直连优先（中转站核心路径），失败降级到 zen/cline 常规路由
+	if resp, handled, perr := tryProvider(chat, isStream, &reqLog); handled {
+		if perr == nil {
+			defer resp.Body.Close()
+			if isStream {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("Connection", "keep-alive")
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+				w.WriteHeader(http.StatusOK)
+				chatStreamToResponses(w, resp, &reqLog, nil)
+				return
+			}
+			var raw map[string]any
+			if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+				reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "decode response: "+err.Error())
+				writeJSON(w, http.StatusInternalServerError, map[string]any{
+					"error": map[string]string{"message": err.Error(), "type": "parse_error"},
+				})
+				return
+			}
+			out2 := normalizeOpenAIResponse(unwrapDataEnvelope(raw))
+			usage := types.ParseTokenUsage(out2["usage"])
+			reqlog.FinalizeRequestLog(&reqLog, usage, time.Time{}, reqLog.StartedAt, true, "")
+			writeJSON(w, http.StatusOK, chatToResponses(out2))
+			return
+		}
+	}
+
 	switch route {
 	case "reject":
 		reqlog.FinalizeRequestLog(&reqLog, types.TokenUsage{}, time.Time{}, reqLog.StartedAt, false, "paid zen model rejected")

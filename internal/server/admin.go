@@ -1841,6 +1841,7 @@ func handleProviderPresets(w http.ResponseWriter, r *http.Request) {
 	type presetOut struct {
 		Key      string            `json:"key"`
 		Name     string            `json:"name"`
+		Protocol string            `json:"protocol"`
 		BaseURL  string            `json:"baseURL"`
 		Headers  map[string]string `json:"headers"`
 		Notes    string            `json:"notes"`
@@ -1854,7 +1855,7 @@ func handleProviderPresets(w http.ResponseWriter, r *http.Request) {
 	out := make([]presetOut, 0, len(keys))
 	for _, k := range keys {
 		p := providers.ProviderPresets[k]
-		out = append(out, presetOut{Key: k, Name: p.Name, BaseURL: p.BaseURL, Headers: p.Headers, Notes: p.Notes, FreeTier: p.FreeTier})
+		out = append(out, presetOut{Key: k, Name: p.Name, Protocol: p.Protocol, BaseURL: p.BaseURL, Headers: p.Headers, Notes: p.Notes, FreeTier: p.FreeTier})
 	}
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{"presets": out}})
 }

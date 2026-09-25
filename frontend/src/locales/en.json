@@ -186,7 +186,13 @@
     "saved": "Provider saved",
     "deleted": "Deleted",
     "deleteConfirm": "Delete this provider?",
-    "empty": "No custom providers yet"
+    "empty": "No custom providers yet",
+    "protocol": "Upstream protocol",
+    "protocolHint": "anthropic protocol converts request/response/SSE automatically",
+    "mapping": "Model mapping (optional)",
+    "mappingFrom": "Exposed ID",
+    "mappingTo": "Upstream real ID",
+    "addMapping": "Add mapping"
   },
   "upstreams": {
     "subtitle": "opencode Zen and Cline egress proxy configuration",

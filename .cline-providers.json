@@ -1,0 +1,19 @@
+[
+  {
+    "id": "prov_mock",
+    "name": "MockClaude",
+    "baseURL": "http://127.0.0.1:9911",
+    "apiKey": "sk-mock",
+    "protocol": "anthropic",
+    "modelIds": [
+      "mock-claude"
+    ],
+    "modelMapping": {
+      "mock-claude": "upstream-model-x"
+    },
+    "enabled": true,
+    "priority": 10,
+    "free": false,
+    "createdAt": "2026-09-25T17:10:16.5812199+08:00"
+  }
+]

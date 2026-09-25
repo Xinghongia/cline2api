@@ -33,3 +33,28 @@ type freeModelRoundTripper func(*http.Request) (*http.Response, error)
 func (f freeModelRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
+
+func TestUpstreamModelFor(t *testing.T) {
+	p := CustomProvider{
+		ModelIDs:    []string{"gpt-4o", "claude-3-5"},
+		ModelMapping: map[string]string{"claude-3-5": "claude-3-5-sonnet-20241022"},
+	}
+	if got := p.UpstreamModelFor("gpt-4o"); got != "gpt-4o" {
+		t.Fatalf("passthrough mapping = %q", got)
+	}
+	if got := p.UpstreamModelFor("claude-3-5"); got != "claude-3-5-sonnet-20241022" {
+		t.Fatalf("mapped id = %q", got)
+	}
+}
+
+func TestEffectiveProtocol(t *testing.T) {
+	if (CustomProvider{}).EffectiveProtocol() != ProtocolOpenAI {
+		t.Fatal("empty protocol should default to openai")
+	}
+	if (CustomProvider{Protocol: "anthropic"}).EffectiveProtocol() != ProtocolAnthropic {
+		t.Fatal("anthropic protocol should be preserved")
+	}
+	if (CustomProvider{Protocol: "bogus"}).EffectiveProtocol() != ProtocolOpenAI {
+		t.Fatal("unknown protocol should default to openai")
+	}
+}

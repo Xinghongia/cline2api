@@ -18,19 +18,48 @@ import (
 // 模型列表；请求按模型归属路由，失败后按 回退链 → 自动兜底 降级。
 // ============================================================================
 
-// CustomProvider 一个 OpenAI 兼容上游。
+// CustomProvider 一个自定义上游：OpenAI 兼容（默认）或 Anthropic 格式。
 type CustomProvider struct {
-	ID         string            `json:"id"`                // 稳定 ID（生成）
-	Name       string            `json:"name"`              // 显示名
-	BaseURL    string            `json:"baseURL"`           // 如 https://openrouter.ai/api/v1
-	APIKey     string            `json:"apiKey"`            // Bearer token
-	ModelIDs   []string          `json:"modelIds"`          // 该上游暴露的模型 ID（如 "z-ai/glm-5.3-flash"）
-	Headers    map[string]string `json:"headers,omitempty"` // 自定义请求头（如 OpenRouter 的 HTTP-Referer）
-	Enabled    bool              `json:"enabled"`
-	Priority   int               `json:"priority"`             // 越小越优先（同模型多上游时）
-	TimeoutSec int               `json:"timeoutSec,omitempty"` // 默认 300
-	Free       bool              `json:"free"`                 // 标记免费来源（供统计/兜底）
-	CreatedAt  time.Time         `json:"createdAt"`
+	ID      string `json:"id"`      // 稳定 ID（生成）
+	Name    string `json:"name"`    // 显示名
+	BaseURL string `json:"baseURL"` // openai: 如 https://openrouter.ai/api/v1；anthropic: 如 https://api.anthropic.com
+	APIKey  string `json:"apiKey"`  // Bearer（openai）或 x-api-key（anthropic）
+	// Protocol 上游协议："openai"（默认，/chat/completions）或 "anthropic"（/v1/messages）
+	Protocol string `json:"protocol,omitempty"`
+	// ModelIDs 该上游对外暴露的模型 ID（客户端请求用这些 ID）
+	ModelIDs []string `json:"modelIds"`
+	// ModelMapping 暴露 ID → 上游真实模型 ID（缺省时同名直传）
+	ModelMapping map[string]string `json:"modelMapping,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"` // 自定义请求头（如 OpenRouter 的 HTTP-Referer）
+	Enabled      bool              `json:"enabled"`
+	Priority     int               `json:"priority"`             // 越小越优先（同模型多上游时）
+	TimeoutSec   int               `json:"timeoutSec,omitempty"` // 默认 300
+	Free         bool              `json:"free"`                 // 标记免费来源（供统计/兜底）
+	CreatedAt    time.Time         `json:"createdAt"`
+}
+
+// ProtocolOpenAI / ProtocolAnthropic 是受支持的上游协议常量。
+const (
+	ProtocolOpenAI    = "openai"
+	ProtocolAnthropic = "anthropic"
+)
+
+// EffectiveProtocol 返回归一化后的协议（空/未知按 openai 处理）。
+func (p CustomProvider) EffectiveProtocol() string {
+	if p.Protocol == ProtocolAnthropic {
+		return ProtocolAnthropic
+	}
+	return ProtocolOpenAI
+}
+
+// UpstreamModelFor 返回暴露模型 ID 对应的上游真实模型 ID（映射缺失时同名直传）。
+func (p CustomProvider) UpstreamModelFor(exposed string) string {
+	if p.ModelMapping != nil {
+		if up, ok := p.ModelMapping[exposed]; ok && up != "" {
+			return up
+		}
+	}
+	return exposed
 }
 
 // providerRegistry 内存态 + 落盘（.cline-providers.json）。
@@ -189,6 +218,7 @@ func SetProviderCooldown(providerID, model string, until time.Time) {
 
 // CallProvider 调用自定义 provider 的 /chat/completions。
 type ProviderPreset struct {
+	Protocol string
 	Name     string
 	BaseURL  string
 	Headers  map[string]string
@@ -253,6 +283,19 @@ var ProviderPresets = map[string]ProviderPreset{
 		BaseURL:  "http://127.0.0.1:8000/v1",
 		Notes:    "Self-hosted OpenAI-compatible server (no key needed usually)",
 		FreeTier: true,
+	},
+	"anthropic": {
+		Name:     "Anthropic (Claude)",
+		Protocol: "anthropic",
+		BaseURL:  "https://api.anthropic.com",
+		Headers:  map[string]string{"anthropic-version": "2023-06-01"},
+		Notes:    "Anthropic Messages protocol; BaseURL without /v1/messages",
+	},
+	"claude-relay": {
+		Name:     "Claude Relay (anthropic protocol)",
+		Protocol: "anthropic",
+		BaseURL:  "https://your-relay.example.com",
+		Notes:    "Any anthropic-protocol relay/proxy exposing /v1/messages",
 	},
 }
 
