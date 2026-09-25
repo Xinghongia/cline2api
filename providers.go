@@ -24,17 +24,17 @@ import (
 
 // CustomProvider 一个 OpenAI 兼容上游。
 type CustomProvider struct {
-	ID          string            `json:"id"`          // 稳定 ID（生成）
-	Name        string            `json:"name"`        // 显示名
-	BaseURL     string            `json:"baseURL"`     // 如 https://openrouter.ai/api/v1
-	APIKey      string            `json:"apiKey"`      // Bearer token
-	ModelIDs    []string          `json:"modelIds"`    // 该上游暴露的模型 ID（如 "z-ai/glm-5.3-flash"）
-	Headers     map[string]string `json:"headers,omitempty"` // 自定义请求头（如 OpenRouter 的 HTTP-Referer）
-	Enabled     bool              `json:"enabled"`
-	Priority    int               `json:"priority"`          // 越小越优先（同模型多上游时）
-	TimeoutSec  int               `json:"timeoutSec,omitempty"` // 默认 300
-	Free        bool              `json:"free"`              // 标记免费来源（供统计/兜底）
-	CreatedAt   time.Time         `json:"createdAt"`
+	ID         string            `json:"id"`                // 稳定 ID（生成）
+	Name       string            `json:"name"`              // 显示名
+	BaseURL    string            `json:"baseURL"`           // 如 https://openrouter.ai/api/v1
+	APIKey     string            `json:"apiKey"`            // Bearer token
+	ModelIDs   []string          `json:"modelIds"`          // 该上游暴露的模型 ID（如 "z-ai/glm-5.3-flash"）
+	Headers    map[string]string `json:"headers,omitempty"` // 自定义请求头（如 OpenRouter 的 HTTP-Referer）
+	Enabled    bool              `json:"enabled"`
+	Priority   int               `json:"priority"`             // 越小越优先（同模型多上游时）
+	TimeoutSec int               `json:"timeoutSec,omitempty"` // 默认 300
+	Free       bool              `json:"free"`                 // 标记免费来源（供统计/兜底）
+	CreatedAt  time.Time         `json:"createdAt"`
 }
 
 // providerRegistry 内存态 + 落盘（.cline-providers.json）。
@@ -190,8 +190,6 @@ func setProviderCooldown(providerID, model string, until time.Time) {
 	providerCooldowns[providerID+":"+model] = until
 	providersMu.Unlock()
 }
-
-
 
 // callProvider 调用自定义 provider 的 /chat/completions。
 func callProvider(p *CustomProvider, params map[string]any, stream bool) (*http.Response, error) {
@@ -362,9 +360,9 @@ var providerPresets = map[string]providerPreset{
 		FreeTier: true,
 	},
 	"gemini": {
-		Name:    "Google AI Studio",
-		BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-		Notes:   "Gemini free tier via OpenAI-compat layer. Key: aistudio.google.com/apikey",
+		Name:     "Google AI Studio",
+		BaseURL:  "https://generativelanguage.googleapis.com/v1beta/openai",
+		Notes:    "Gemini free tier via OpenAI-compat layer. Key: aistudio.google.com/apikey",
 		FreeTier: true,
 	},
 	"mistral": {
@@ -374,9 +372,9 @@ var providerPresets = map[string]providerPreset{
 		FreeTier: true,
 	},
 	"together": {
-		Name:    "Together AI",
-		BaseURL: "https://api.together.xyz/v1",
-		Notes:   "Some free models (e.g. Llama Vision free). Key: api.together.ai",
+		Name:     "Together AI",
+		BaseURL:  "https://api.together.xyz/v1",
+		Notes:    "Some free models (e.g. Llama Vision free). Key: api.together.ai",
 		FreeTier: true,
 	},
 	"deepseek": {
@@ -390,9 +388,9 @@ var providerPresets = map[string]providerPreset{
 		Notes:   "Paid. Key: platform.openai.com",
 	},
 	"vllm-local": {
-		Name:    "Local vLLM / Ollama",
-		BaseURL: "http://127.0.0.1:8000/v1",
-		Notes:   "Self-hosted OpenAI-compatible server (no key needed usually)",
+		Name:     "Local vLLM / Ollama",
+		BaseURL:  "http://127.0.0.1:8000/v1",
+		Notes:    "Self-hosted OpenAI-compatible server (no key needed usually)",
 		FreeTier: true,
 	},
 }

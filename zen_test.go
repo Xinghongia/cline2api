@@ -546,7 +546,7 @@ func TestAnthropicThinkingMapping(t *testing.T) {
 	cases := []struct {
 		name     string
 		thinking string
-		want     any    // expected reasoning_effort in translated request
+		want     any // expected reasoning_effort in translated request
 	}{
 		{"disabled→none", `{"type":"disabled"}`, "none"},
 		{"enabled→high", `{"type":"enabled","budget_tokens":8000}`, "high"},
@@ -578,7 +578,7 @@ func TestAnthropicThinkingMapping(t *testing.T) {
 
 func TestBuildUpstreamBodyNoneDropsReasoningEffort(t *testing.T) {
 	body := buildUpstreamBody(map[string]any{
-		"model":           "m1",
+		"model":            "m1",
 		"reasoning_effort": "none",
 	}, false)
 	if _, ok := body["reasoning_effort"]; ok {
