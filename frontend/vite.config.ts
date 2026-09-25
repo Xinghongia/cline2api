@@ -15,7 +15,9 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    // 产物直接输出到 Go 包目录，供 internal/server 的 go:embed 嵌入
+    outDir: '../internal/server/dist',
+    emptyOutDir: true,
     sourcemap: false,
     chunkSizeWarningLimit: 2500,
   },

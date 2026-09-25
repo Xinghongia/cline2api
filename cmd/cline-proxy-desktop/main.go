@@ -1,9 +1,8 @@
-//go:build desktop
-
 package main
 
 import (
 	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/server"
 	"context"
 	"flag"
 	"fmt"
@@ -30,7 +29,7 @@ func main() {
 
 	proxyErr := make(chan error, 1)
 	go func() {
-		proxyErr <- startProxy(*host, *port)
+		proxyErr <- server.StartProxy(*host, *port)
 	}()
 
 	if err := waitForEmbeddedProxy(*port, 15*time.Second, proxyErr); err != nil {
@@ -43,7 +42,7 @@ func main() {
 		return
 	}
 
-	if !isLoopbackHost(*host) {
+	if !server.IsLoopbackHost(*host) {
 		log.Printf("警告: 监听 %s 非本机回环地址，桌面窗口可能无法自动连接，建议使用 127.0.0.1 或 0.0.0.0", *host)
 	}
 

@@ -1,4 +1,4 @@
-package main
+package server
 
 // zen 上游相关的 relay 集成测试（responses/proxy 转换层）。
 

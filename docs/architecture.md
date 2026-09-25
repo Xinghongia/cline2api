@@ -20,21 +20,28 @@ Cline2API 是一个"中转站"式反向代理：下游统一暴露 OpenAI / Anth
 cline2api/
 ├── cmd/
 │   ├── cline-proxy/            # CLI 入口
-│   └── cline-proxy-desktop/    # 桌面入口（原 desktop build tag 文件）
+│   └── cline-proxy-desktop/    # 桌面入口 + Windows 资源（syso）
 ├── internal/
-│   ├── types/                  # 共享类型（Account/Model/RequestLog...）
-│   ├── pool/                   # 账号池、数据文件定位、持久化
-│   ├── cline/                  # Cline 上游（auth/models_sync/egress proxy/capture）
-│   ├── zen/                    # opencode zen 上游
-│   ├── providers/              # 自定义提供商（通用中转）
-│   ├── relay/                  # HTTP 服务、协议转换、SSE
-│   ├── admin/                  # 管理 REST API + 前端 embed + i18n
-│   └── usage/                  # 请求日志 + SQLite 统计
-├── frontend/                   # React 19 + TS + Ant Design 6（Vite 构建，go:embed 嵌入）
+│   ├── types/                  # 共享类型与纯函数（Account/Model/RequestLog/TokenUsage/ParseTokenUsage/MergeTokenUsage）
+│   ├── apphome/                # 数据文件定位（resolveDataPath）
+│   ├── strutil/                # 字符串小工具（Truncate）
+│   ├── randx/                  # 随机数（crypto/rand 驱动 Intn）
+│   ├── httpx/                  # 全局 transport/client + 代理拨号器（DialViaProxy）
+│   ├── proxyconfig/            # 代理行为配置（.cline-config.json）
+│   ├── pool/                   # 账号池 + Cline 令牌刷新（State/Mu/Path 显式导出）
+│   ├── cline/                  # Cline 上游：auth、模型同步、出口代理池、capture
+│   ├── zen/                    # opencode zen 上游：路由决策、限流状态机、压缩
+│   ├── providers/              # 自定义提供商：数据模型/CRUD/解析（执行逻辑在 server）
+│   ├── chatmsg/                # 请求整形共享层（SanitizeMessages/PassThroughKeys/MsgCount）
+│   ├── reqlog/                 # 请求日志存储（Append/Finalize/List/Filter）
+│   └── server/                 # HTTP 服务层：协议转换、SSE、管理 REST API、前端 embed、i18n
+├── frontend/                   # React 19 + TS + Ant Design 6（Vite 构建产物输出到 internal/server/dist）
 ├── desktop/                    # 桌面构建脚本
-├── docs/                       # 本目录
-└── scripts/                    # 构建脚本
+├── docs/                       # 技术文档中心
+└── scripts/（规划中）
 ```
+
+**与原计划的偏差**：原方案将 relay 与 admin 拆为两包，实际合并为 `internal/server`——admin 的 provider 测试处理器依赖 relay 的 callProvider/normalizeOpenAIResponse，relay 的 startProxy 注册 admin 路由，双向依赖是客观存在；强行拆分需引入回调注入并导出大量符号，收益不抵成本。HTTP 服务层作为内聚单元更符合实际耦合。
 
 ## 关键决策记录（ADR）
 

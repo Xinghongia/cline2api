@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"cline-go-proxy/internal/cline"
@@ -58,7 +58,7 @@ func protocolTestServer(t *testing.T) string {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- startProxy("127.0.0.1", port)
+		serverErr <- StartProxy("127.0.0.1", port)
 	}()
 
 	baseURL := "http://127.0.0.1:" + strconv.Itoa(port)

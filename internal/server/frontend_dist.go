@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"embed"
@@ -12,10 +12,10 @@ import (
 // 前端产物嵌入：`npm run build` 生成 frontend/dist 后由 Go 打进二进制。
 // `all:` 前缀确保 Vite 产物中以下划线开头的文件也会被包含。
 //
-//go:embed all:frontend/dist
+//go:embed all:dist
 var frontendDistFS embed.FS
 
-var frontendDistRoot = mustSubFS(frontendDistFS, "frontend/dist")
+var frontendDistRoot = mustSubFS(frontendDistFS, "dist")
 
 func mustSubFS(fsys fs.FS, dir string) fs.FS {
 	sub, err := fs.Sub(fsys, dir)

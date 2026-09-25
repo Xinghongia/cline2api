@@ -19,7 +19,7 @@ OUT="$ROOT/desktop/build/$OS-$ARCH"
 NAME="cline-proxy-desktop"
 # 版本号：优先环境变量 VERSION，否则取最近 git tag（如 v1.3.0），再退回 dev
 VERSION=${VERSION:-$(git describe --tags --always 2>/dev/null || echo "dev")}
-LDFLAGS="-s -w -X main.appVersion=$VERSION"
+LDFLAGS="-s -w -X cline-go-proxy/internal/server.appVersion=$VERSION"
 
 if [ "$OS" = "windows" ]; then
   NAME="$NAME.exe"
@@ -42,5 +42,5 @@ if [ ! -f "$ROOT/frontend/dist/index.html" ]; then
   fi
 fi
 
-go build -tags "desktop production" -trimpath -ldflags="$LDFLAGS" -o "$OUT/$NAME" .
+go build -tags "desktop production" -trimpath -ldflags="$LDFLAGS" -o "$OUT/$NAME" ./cmd/cline-proxy-desktop
 printf 'Built: %s (version %s)\n' "$OUT/$NAME" "$VERSION"

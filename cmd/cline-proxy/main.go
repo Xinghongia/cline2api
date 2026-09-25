@@ -1,10 +1,9 @@
-//go:build !desktop
-
 package main
 
 import (
 	"cline-go-proxy/internal/cline"
 	"cline-go-proxy/internal/pool"
+	"cline-go-proxy/internal/server"
 	"flag"
 	"fmt"
 	"log"
@@ -65,7 +64,7 @@ func main() {
 		return
 	}
 
-	if err := startProxy(*host, *port); err != nil && err != http.ErrServerClosed {
+	if err := server.StartProxy(*host, *port); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Proxy failed: %v", err)
 		os.Exit(1)
 	}
@@ -91,7 +90,7 @@ func buildAndStart(host string, port int) {
 	}
 
 	fmt.Println("Building proxy...")
-	cmd := exec.Command("go", "build", "-o", exe, ".")
+	cmd := exec.Command("go", "build", "-o", exe, "./cmd/cline-proxy")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -124,7 +123,7 @@ func buildAndStart(host string, port int) {
 		fmt.Println("Proxy started.")
 	}
 
-	url := fmt.Sprintf("http://%s:%d/admin/", effectiveAdminHost(host), port)
+	url := fmt.Sprintf("http://%s:%d/admin/", server.EffectiveAdminHost(host), port)
 	fmt.Printf("\nAdmin panel: %s\n", url)
 
 	switch runtime.GOOS {

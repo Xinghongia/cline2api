@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"cline-go-proxy/internal/cline"
@@ -914,7 +914,7 @@ func handleAdminDeleteKey(w http.ResponseWriter, r *http.Request) {
 func handleAdminConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := proxyconfig.Get()
 	writeAPI(w, http.StatusOK, apiResponse{Success: true, Data: map[string]any{
-		"address":      fmt.Sprintf("%s:%d", effectiveAdminHost(listenHost), listenPort),
+		"address":      fmt.Sprintf("%s:%d", EffectiveAdminHost(listenHost), listenPort),
 		"host":         listenHost,
 		"strategy":     cfg.Strategy,
 		"modelChain":   cfg.ModelChain,
@@ -1068,7 +1068,7 @@ func handleAdminUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		"onlyFree":     cfg.OnlyFree,
 		"defaultModel": getDefaultModel(),
 		"host":         listenHost,
-		"address":      fmt.Sprintf("%s:%d", effectiveAdminHost(listenHost), listenPort),
+		"address":      fmt.Sprintf("%s:%d", EffectiveAdminHost(listenHost), listenPort),
 		"restarting":   restarting,
 	}})
 }

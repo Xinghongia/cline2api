@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bufio"
@@ -120,7 +120,7 @@ func getDefaultModel() string {
 	return fallbackDefaultModel
 }
 
-// 当前监听地址（startProxy 启动时赋值，供管理后台展示）。
+// 当前监听地址（StartProxy 启动时赋值，供管理后台展示）。
 var (
 	listenHost string
 	listenPort int
@@ -159,7 +159,7 @@ func restartListener(host string, port int) error {
 	fmt.Println("")
 	fmt.Println(strings.Repeat("=", 58))
 	fmt.Printf("  Listener restarted: %s\n", addr)
-	if !isLoopbackHost(host) {
+	if !IsLoopbackHost(host) {
 		for _, ip := range detectLocalIPs() {
 			fmt.Printf("  http://%s:%d (LAN)\n", ip, port)
 		}
@@ -169,9 +169,9 @@ func restartListener(host string, port int) error {
 	return server.ListenAndServe()
 }
 
-// effectiveAdminHost 返回管理后台/浏览器实际可用的访问地址：
+// EffectiveAdminHost 返回管理后台/浏览器实际可用的访问地址：
 // host 为空或通配地址（0.0.0.0 / ::）时展示回环 127.0.0.1，否则返回 host 本身。
-func effectiveAdminHost(host string) string {
+func EffectiveAdminHost(host string) string {
 	switch host {
 	case "", "0.0.0.0", "::":
 		return "127.0.0.1"
@@ -202,8 +202,8 @@ func detectLocalIPs() []string {
 	return result
 }
 
-// isLoopbackHost 判断监听地址是否为回环（127.x / localhost），用于安全提示。
-func isLoopbackHost(host string) bool {
+// IsLoopbackHost 判断监听地址是否为回环（127.x / localhost），用于安全提示。
+func IsLoopbackHost(host string) bool {
 	switch host {
 	case "", "localhost", "127.0.0.1":
 		return true
@@ -234,7 +234,7 @@ func isFreeModelEntry(m types.Model) bool {
 	return zen.IsZenSource(m) && zen.IsZenFreeModel(m)
 }
 
-func startProxy(host string, port int) error {
+func StartProxy(host string, port int) error {
 	p := pool.Load()
 	reqlog.LoadRequestLogs()
 	activeCount := 0
@@ -538,7 +538,7 @@ func startProxy(host string, port int) error {
 	fmt.Println(strings.Repeat("=", 58))
 	fmt.Printf("  http://%s\n", addr)
 	fmt.Printf("  http://%s/v1\n", addr)
-	if !isLoopbackHost(host) {
+	if !IsLoopbackHost(host) {
 		for _, ip := range detectLocalIPs() {
 			fmt.Printf("  http://%s:%d (LAN)\n", ip, port)
 		}

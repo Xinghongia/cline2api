@@ -1,4 +1,4 @@
-package main
+package server
 
 // appVersion 是运行时显示的版本号。
 // 构建时通过 -ldflags "-X main.appVersion=<version>" 注入（如 v1.3.0），

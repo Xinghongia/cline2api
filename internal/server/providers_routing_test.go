@@ -1,4 +1,4 @@
-package main
+package server
 
 // providers 路由集成测试：验证 provider 命中模型时优先于 Cline 账号池。
 

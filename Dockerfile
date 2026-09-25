@@ -18,7 +18,7 @@ COPY . .
 # 前端产物嵌入二进制（go:embed all:frontend/dist）
 COPY --from=frontend /src/frontend/dist ./frontend/dist
 ARG APP_VERSION=dev
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.appVersion=${APP_VERSION}" -o cline-proxy .
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X cline-go-proxy/internal/server.appVersion=${APP_VERSION}" -o cline-proxy ./cmd/cline-proxy
 
 FROM alpine:3.21
 

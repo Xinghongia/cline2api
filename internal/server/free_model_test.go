@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"cline-go-proxy/internal/httpx"
