@@ -32,12 +32,14 @@ export async function copyText(text: string): Promise<void> {
   }
 }
 
-/** 打开外部链接：桌面端 WebView 无法弹系统浏览器，走后端 open-external 兜底 */
+/**
+ * 打开外部链接：统一走后端 open-external，由服务端调起系统浏览器。
+ * 不要用 window.open 再兜底后端——noopener 模式下 window.open 恒返回 null，
+ * 会被误判为弹窗被拦截，导致浏览器标签页 + 系统浏览器各开一次（双链接 bug）。
+ * 桌面 WebView 本就无法弹外部浏览器，本机浏览器场景下两端同机，服务端打开即一次。
+ */
 export function openExternal(url: string): void {
-  const win = window.open(url, '_blank', 'noopener')
-  if (!win) {
-    void fetch(`/admin/api/open-external?url=${encodeURIComponent(url)}`)
-  }
+  void fetch(`/admin/api/open-external?url=${encodeURIComponent(url)}`)
 }
 
 /** 把多行文本解析为批量导入 tokens：优先 JSON 数组，否则每行一个 token */
