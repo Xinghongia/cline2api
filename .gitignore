@@ -36,5 +36,11 @@ build/bin/
 # wails frontend scaffolding leftovers
 frontend/wailsjs/
 
+# frontend (React admin) build artifacts — dist 只保留 .gitkeep 占位保证 go build 可用
+frontend/node_modules/
+frontend/dist/*
+!frontend/dist/.gitkeep
+*.tsbuildinfo
+
 # 本地参考缓存（opencode2api 参考，非本仓库代码）
 .cache/

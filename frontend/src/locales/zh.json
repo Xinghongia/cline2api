@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "dashboard": "仪表盘",
+    "accounts": "账号管理",
+    "logs": "请求日志",
+    "models": "模型管理",
+    "providers": "提供商",
+    "upstreams": "上游服务",
+    "keys": "密钥与安全",
+    "settings": "设置",
+    "about": "关于"
+  },
+  "app": {
+    "title": "Cline2API",
+    "subtitle": "Cline API 反向代理",
+    "theme": "主题",
+    "language": "语言"
+  },
+  "placeholder": {
+    "title": "建设中",
+    "desc": "该页面将在功能对齐阶段（M1）实现，当前为 M0 骨架占位。"
+  }
+}

@@ -29,5 +29,18 @@ fi
 
 mkdir -p "$OUT"
 cd "$ROOT"
+
+# 前端产物（go:embed all:frontend/dist）必须先于 go build 生成
+if [ ! -f "$ROOT/frontend/dist/index.html" ]; then
+  echo "Building admin frontend..."
+  if command -v npm >/dev/null 2>&1; then
+    (cd "$ROOT/frontend" && (npm ci --no-fund --no-audit || npm install --no-fund --no-audit) && npm run build)
+  else
+    echo "ERROR: frontend/dist 不存在且未安装 npm，无法构建内嵌管理后台。" >&2
+    echo "请先安装 Node.js 22+ 并重试，或在已装 Node 的机器上执行: cd frontend && npm ci && npm run build" >&2
+    exit 1
+  fi
+fi
+
 go build -tags "desktop production" -trimpath -ldflags="$LDFLAGS" -o "$OUT/$NAME" .
 printf 'Built: %s (version %s)\n' "$OUT/$NAME" "$VERSION"

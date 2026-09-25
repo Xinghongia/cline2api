@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
@@ -36,6 +37,7 @@ func main() {
 	}
 
 	if *selfCheck {
+		checkAdminServing(*port)
 		fmt.Printf("selfcheck ok: embedded proxy serving http://127.0.0.1:%d/health\n", *port)
 		return
 	}
@@ -64,6 +66,23 @@ func configuredDesktopHost() string {
 		return value
 	}
 	return "127.0.0.1"
+}
+
+// checkAdminServing 确认 /admin/ 返回 200 且是 HTML——捕获前端产物未嵌入（dist 缺失）
+// 或 SPA 服务注册失败这类 CI 构建事故。
+func checkAdminServing(port int) {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/admin/", port))
+	if err != nil {
+		log.Fatalf("selfcheck failed: /admin/ 不可达：%v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Fatalf("selfcheck failed: /admin/ 返回 %d，期望 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		log.Fatalf("selfcheck failed: /admin/ Content-Type=%q，期望 text/html", ct)
+	}
 }
 
 func waitForEmbeddedProxy(port int, timeout time.Duration, proxyErr <-chan error) error {
@@ -104,7 +123,7 @@ func runDesktopWindow(port int) error {
 			Handler: desktopRedirectHandler(port),
 		},
 		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 255},
-		OnStartup:       func(_ context.Context) {},
+		OnStartup:        func(_ context.Context) {},
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,
 			WindowIsTranslucent:  false,

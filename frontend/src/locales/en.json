@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "accounts": "Accounts",
+    "logs": "Request Logs",
+    "models": "Models",
+    "providers": "Providers",
+    "upstreams": "Upstreams",
+    "keys": "Keys & Security",
+    "settings": "Settings",
+    "about": "About"
+  },
+  "app": {
+    "title": "Cline2API",
+    "subtitle": "Cline API Reverse Proxy",
+    "theme": "Theme",
+    "language": "Language"
+  },
+  "placeholder": {
+    "title": "Under Construction",
+    "desc": "This page will be implemented in milestone M1. Currently an M0 skeleton placeholder."
+  }
+}
